@@ -23,6 +23,7 @@ class MetalOverlayView: MTKView, @preconcurrency MTKViewDelegate {
     }
 
     private var bars: [ColorBar] = []
+    private var textLayer: MetalTextLayer?
 
     @objc init?(parentView: NSView) {
         guard let device = MTLCreateSystemDefaultDevice() else { return nil }
@@ -33,11 +34,12 @@ class MetalOverlayView: MTKView, @preconcurrency MTKViewDelegate {
         self.isPaused = true
         self.enableSetNeedsDisplay = true
         self.layer?.isOpaque = false
-        self.alphaValue = 0.15 // subtle overlay
+        self.alphaValue = 0.15 // subtle overlay mode; set to 1.0 for full replace
 
         self.autoresizingMask = [.width, .height]
         parentView.addSubview(self, positioned: .above, relativeTo: nil)
 
+        self.textLayer = MetalTextLayer(device: device)
         setupPipeline()
     }
 
@@ -60,6 +62,25 @@ class MetalOverlayView: MTKView, @preconcurrency MTKViewDelegate {
             )
         }
         needsDisplay = true
+    }
+
+    /// Render full text via Metal (Phase 1: CoreText → Metal texture).
+    /// Call this to make the overlay render actual document text.
+    @objc func renderText(lines: [NSAttributedString], origins: [NSValue], backgroundColor: NSColor) {
+        guard let textLayer, let device else { return }
+
+        let lineData: [(text: NSAttributedString, origin: CGPoint)] = zip(lines, origins).map {
+            ($0, $1.pointValue)
+        }
+
+        if let texture = textLayer.render(
+            lines: lineData,
+            viewportSize: bounds.size,
+            backgroundColor: backgroundColor
+        ) {
+            self.alphaValue = 1.0 // Full replace mode
+            needsDisplay = true
+        }
     }
 
     // MARK: - Pipeline

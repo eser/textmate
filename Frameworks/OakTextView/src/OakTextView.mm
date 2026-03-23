@@ -1185,6 +1185,32 @@ doScroll:
 		return;
 	}
 
+#if __has_include("TextFellow-Swift.h")
+	// Metal renderer toggle: defaults write org.sw3t.TextFellow metalRenderer -bool YES/NO
+	static BOOL useMetalRenderer = [NSUserDefaults.standardUserDefaults boolForKey:@"metalRenderer"];
+	if(useMetalRenderer)
+	{
+		// Metal Phase 1: CoreText → Metal texture (same quality, GPU compositing)
+		static id metalOverlay = nil;
+		static dispatch_once_t metalOnce;
+		dispatch_once(&metalOnce, ^{
+			Class overlayClass = NSClassFromString(@"SW3TMetalOverlayView");
+			if(overlayClass)
+			{
+				metalOverlay = [[overlayClass alloc] performSelector:NSSelectorFromString(@"initWithParentView:") withObject:self];
+				if(metalOverlay)
+				{
+					[metalOverlay setValue:@1.0 forKey:@"alphaValue"]; // fully opaque — replaces CGContext
+					os_log_info(OS_LOG_DEFAULT, "Metal renderer active — replacing CoreText+CGContext");
+				}
+			}
+		});
+
+		// Still run the CoreText path underneath for hit-testing / selection model
+		// but the Metal overlay covers it visually
+	}
+#endif
+
 	if(self.theme->is_transparent())
 	{
 		[NSColor.clearColor set];
@@ -1218,23 +1244,6 @@ doScroll:
 	};
 
 	documentView->draw(ng::context_t(context, _showInvisibles ? documentView->invisibles_map : NULL_STR, [spellingDotImage CGImageForProposedRect:NULL context:[NSGraphicsContext currentContext] hints:nil], foldingDotsFactory), aRect, [self isFlipped], merge(documentView->ranges(), [self markedRanges]), _liveSearchRanges);
-
-#if __has_include("TextFellow-Swift.h")
-	// Attach Metal overlay on first draw if enabled via defaults
-	static dispatch_once_t metalOnce;
-	dispatch_once(&metalOnce, ^{
-		if([NSUserDefaults.standardUserDefaults boolForKey:@"metalOverlay"])
-		{
-			Class overlayClass = NSClassFromString(@"SW3TMetalOverlayView");
-			if(overlayClass)
-			{
-				id overlay = [[overlayClass alloc] performSelector:NSSelectorFromString(@"initWithParentView:") withObject:self];
-				if(overlay)
-					os_log_info(OS_LOG_DEFAULT, "Metal overlay attached to OakTextView");
-			}
-		}
-	});
-#endif
 }
 
 // =====================

@@ -41,6 +41,7 @@ final class AppInfo: NSObject, @unchecked Sendable {
         // Register defaults for TextFellow features
         UserDefaults.standard.register(defaults: [
             "metalOverlay": true,
+            "metalRenderer": true,
         ])
 
         // Load user config (~/.config/sw3t/settings.toml)
