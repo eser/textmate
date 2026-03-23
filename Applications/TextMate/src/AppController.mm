@@ -17,6 +17,10 @@
 #import "RMateServer.h"
 #if __has_include("TextFellow-Swift.h")
 #import "TextFellow-Swift.h"
+@class TextFellowConfigBridge;
+@interface TextFellowConfigBridge : NSObject
++ (void)applyConfigToSettings;
+@end
 #endif
 #import <BundleEditor/BundleEditor.h>
 #import <BundlesManager/BundlesManager.h>
@@ -634,6 +638,8 @@ BOOL HasDocumentWindow (NSArray* windows)
 	self.didFinishLaunching = YES;
 
 #if __has_include("TextFellow-Swift.h")
+	[[SW3TAppInfo shared] bootstrap];
+	[TextFellowConfigBridge applyConfigToSettings];
 	[self registerCommandPaletteItems];
 #endif
 }
@@ -663,6 +669,38 @@ BOOL HasDocumentWindow (NSArray* windows)
 	[cp registerItemWithId:@"app.prefs"     title:@"Preferences…"       category:@"App"      shortcut:@"⌘,"  target:self selector:@selector(showPreferences:)];
 	[cp registerItemWithId:@"app.bundles"   title:@"Edit Bundles…"      category:@"App"      shortcut:@"⌃⌥⌘B" target:self selector:@selector(showBundleEditor:)];
 	[cp registerItemWithId:@"app.about"     title:@"About TextFellow"   category:@"App"      shortcut:nil    target:self selector:@selector(orderFrontAboutPanel:)];
+
+	// Dynamic bundle commands
+	int const bundleItemMask = bundles::kItemTypeCommand | bundles::kItemTypeSnippet | bundles::kItemTypeMacro;
+	std::vector<bundles::item_ptr> bundleItems = bundles::query(bundles::kFieldAny, NULL_STR, scope::wildcard, bundleItemMask, oak::uuid_t(), false);
+	for(auto const& item : bundleItems)
+	{
+		if(item->hidden_from_user() || item->deleted() || item->disabled())
+			continue;
+
+		NSString* title    = [NSString stringWithCxxString:item->name()];
+		NSString* category = item->bundle() ? [NSString stringWithCxxString:item->bundle()->name()] : @"Bundle";
+		NSString* itemId   = [NSString stringWithFormat:@"bundle.%@", [NSString stringWithCxxString:to_s(item->uuid())]];
+		NSString* uuid     = [NSString stringWithCxxString:to_s(item->uuid())];
+
+		// Map key equivalent to display shortcut (if any)
+		NSString* shortcut = nil;
+		std::string keyEq  = bundles::key_equivalent(item);
+		if(keyEq != NULL_STR && !keyEq.empty())
+			shortcut = [NSString stringWithCxxString:keyEq];
+
+		// Map tab trigger (show as "⇥ trigger" if present and no key equivalent)
+		if(!shortcut)
+		{
+			std::string tabTrigger = item->value_for_field(bundles::kFieldTabTrigger);
+			if(tabTrigger != NULL_STR && !tabTrigger.empty())
+				shortcut = [NSString stringWithFormat:@"%@⇥", [NSString stringWithCxxString:tabTrigger]];
+		}
+
+		[cp registerItemWithBlockWithId:itemId title:title category:category shortcut:shortcut actionBlock:^{
+			[NSApp sendAction:@selector(performBundleItemWithUUIDStringFrom:) to:nil from:@{ @"representedObject": uuid }];
+		}];
+	}
 }
 #endif
 

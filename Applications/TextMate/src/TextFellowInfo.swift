@@ -5,6 +5,7 @@
 // accessed via the bridging header.
 
 import Cocoa
+import os.log
 
 /// App metadata accessible from both Swift and ObjC.
 @objc(SW3TAppInfo)
@@ -33,5 +34,21 @@ final class AppInfo: NSObject, @unchecked Sendable {
         let paths = NSSearchPathForDirectoriesInDomains(
             .cachesDirectory, .userDomainMask, true)
         return (paths.first ?? "~/Library/Caches") + "/com.macromates.TextMate"
+    }
+
+    /// Initialize subsystems on first access.
+    @objc func bootstrap() {
+        // Load user config (~/.config/sw3t/settings.toml)
+        LayeredConfig.shared.loadUserSettings()
+
+        // Initialize grammar registry (triggers grammar loading)
+        _ = GrammarRegistry.shared
+
+        // Initialize LSP coordinator (listens for document open events)
+        _ = LSPCoordinator.shared
+
+        os_log(.info, "TextFellow bootstrapped: %{public}@ grammars, %{public}d LSP servers registered",
+               GrammarRegistry.shared.availableLanguages.joined(separator: ", "),
+               LSPCoordinator.shared.registeredServerCount)
     }
 }

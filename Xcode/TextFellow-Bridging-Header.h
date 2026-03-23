@@ -16,6 +16,15 @@ extern "C" {
 #endif
 extern const TSLanguage *tree_sitter_json(void);
 extern const TSLanguage *tree_sitter_c(void);
+extern const TSLanguage *tree_sitter_javascript(void);
+extern const TSLanguage *tree_sitter_python(void);
+extern const TSLanguage *tree_sitter_go(void);
+extern const TSLanguage *tree_sitter_rust(void);
+extern const TSLanguage *tree_sitter_typescript(void);
+extern const TSLanguage *tree_sitter_html(void);
+extern const TSLanguage *tree_sitter_css(void);
+extern const TSLanguage *tree_sitter_markdown(void);
+extern const TSLanguage *tree_sitter_yaml(void);
 #ifdef __cplusplus
 }
 #endif

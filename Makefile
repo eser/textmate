@@ -48,6 +48,7 @@ xcode-build: xcode
 		-target TextFellow \
 		-configuration Debug \
 		-arch arm64 \
+		SYMROOT=$(CURDIR)/build/xcode \
 		build
 
 ## Build and run TextFellow (Xcode)

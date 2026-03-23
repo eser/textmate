@@ -116,6 +116,22 @@ public struct CommandItem: Sendable {
         tableView.reloadData()
     }
 
+    @objc public func registerItemWithBlock(
+        id: String,
+        title: String,
+        category: String,
+        shortcut: String?,
+        actionBlock: @escaping @Sendable () -> Void
+    ) {
+        let item = CommandItem(
+            id: id, title: title, category: category, shortcut: shortcut,
+            action: { actionBlock() }
+        )
+        allItems.append(item)
+        filteredItems = allItems
+        tableView.reloadData()
+    }
+
     /// Show the palette snapped to the top center of the key window.
     @objc public func showPalette() {
         // Snap to active window, fall back to screen center

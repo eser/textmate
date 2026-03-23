@@ -94,6 +94,8 @@ public struct ConfigLayer: Sendable {
 /// ```
 @objc public final class LayeredConfig: NSObject, ConfigProvider, @unchecked Sendable {
 
+    @objc public static let shared = LayeredConfig()
+
     private var layers: [ConfigLayer] = []
 
     @objc public override init() {

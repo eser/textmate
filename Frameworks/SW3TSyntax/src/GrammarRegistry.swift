@@ -50,5 +50,41 @@ public final class GrammarRegistry: NSObject, @unchecked Sendable {
         // C
         let cLang: OpaquePointer = tree_sitter_c()
         register(name: "c", extensions: ["c", "h"], language: cLang)
+
+        // JavaScript
+        let jsLang: OpaquePointer = tree_sitter_javascript()
+        register(name: "javascript", extensions: ["js", "mjs", "cjs", "jsx"], language: jsLang)
+
+        // Python
+        let pyLang: OpaquePointer = tree_sitter_python()
+        register(name: "python", extensions: ["py", "pyw"], language: pyLang)
+
+        // Go
+        let goLang: OpaquePointer = tree_sitter_go()
+        register(name: "go", extensions: ["go"], language: goLang)
+
+        // Rust
+        let rustLang: OpaquePointer = tree_sitter_rust()
+        register(name: "rust", extensions: ["rs"], language: rustLang)
+
+        // TypeScript
+        let tsLang: OpaquePointer = tree_sitter_typescript()
+        register(name: "typescript", extensions: ["ts", "mts", "cts"], language: tsLang)
+
+        // HTML
+        let htmlLang: OpaquePointer = tree_sitter_html()
+        register(name: "html", extensions: ["html", "htm"], language: htmlLang)
+
+        // CSS
+        let cssLang: OpaquePointer = tree_sitter_css()
+        register(name: "css", extensions: ["css"], language: cssLang)
+
+        // Markdown
+        let mdLang: OpaquePointer = tree_sitter_markdown()
+        register(name: "markdown", extensions: ["md", "markdown"], language: mdLang)
+
+        // YAML
+        let yamlLang: OpaquePointer = tree_sitter_yaml()
+        register(name: "yaml", extensions: ["yaml", "yml"], language: yamlLang)
     }
 }

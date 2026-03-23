@@ -102,6 +102,129 @@ targets:
         - $(SRCROOT)/vendor/tree-sitter-c/src
       WARNING_CFLAGS: "-w"
 
+  # ── Vendor: tree-sitter grammar — JavaScript ──
+  TreeSitterJS:
+    type: library.static
+    platform: macOS
+    sources:
+      - path: vendor/tree-sitter-javascript/src
+        includes: ["parser.c", "scanner.c"]
+    settings:
+      GCC_PRECOMPILE_PREFIX_HEADER: false
+      GCC_PREFIX_HEADER: ""
+      HEADER_SEARCH_PATHS:
+        - $(inherited)
+        - $(SRCROOT)/vendor/tree-sitter/lib/include
+        - $(SRCROOT)/vendor/tree-sitter-javascript/src
+      WARNING_CFLAGS: "-w"
+
+  # ── Vendor: tree-sitter grammar — Python ──
+  TreeSitterPython:
+    type: library.static
+    platform: macOS
+    sources:
+      - path: vendor/tree-sitter-python/src
+        includes: ["parser.c", "scanner.c"]
+    settings:
+      GCC_PRECOMPILE_PREFIX_HEADER: false
+      GCC_PREFIX_HEADER: ""
+      HEADER_SEARCH_PATHS:
+        - $(inherited)
+        - $(SRCROOT)/vendor/tree-sitter/lib/include
+        - $(SRCROOT)/vendor/tree-sitter-python/src
+      WARNING_CFLAGS: "-w"
+
+  # ── Vendor: tree-sitter grammar — Go ──
+  TreeSitterGo:
+    type: library.static
+    platform: macOS
+    sources:
+      - path: vendor/tree-sitter-go/src
+        includes: ["parser.c"]
+    settings:
+      GCC_PRECOMPILE_PREFIX_HEADER: false
+      GCC_PREFIX_HEADER: ""
+      HEADER_SEARCH_PATHS: [$(inherited), $(SRCROOT)/vendor/tree-sitter/lib/include]
+      WARNING_CFLAGS: "-w"
+
+  # ── Vendor: tree-sitter grammar — Rust ──
+  TreeSitterRust:
+    type: library.static
+    platform: macOS
+    sources:
+      - path: vendor/tree-sitter-rust/src
+        includes: ["parser.c", "scanner.c"]
+    settings:
+      GCC_PRECOMPILE_PREFIX_HEADER: false
+      GCC_PREFIX_HEADER: ""
+      HEADER_SEARCH_PATHS: [$(inherited), $(SRCROOT)/vendor/tree-sitter/lib/include, $(SRCROOT)/vendor/tree-sitter-rust/src]
+      WARNING_CFLAGS: "-w"
+
+  # ── Vendor: tree-sitter grammar — TypeScript ──
+  TreeSitterTS:
+    type: library.static
+    platform: macOS
+    sources:
+      - path: vendor/tree-sitter-typescript/typescript/src
+        includes: ["parser.c", "scanner.c"]
+    settings:
+      GCC_PRECOMPILE_PREFIX_HEADER: false
+      GCC_PREFIX_HEADER: ""
+      HEADER_SEARCH_PATHS: [$(inherited), $(SRCROOT)/vendor/tree-sitter/lib/include, $(SRCROOT)/vendor/tree-sitter-typescript/typescript/src]
+      WARNING_CFLAGS: "-w"
+
+  # ── Vendor: tree-sitter grammar — HTML ──
+  TreeSitterHTML:
+    type: library.static
+    platform: macOS
+    sources:
+      - path: vendor/tree-sitter-html/src
+        includes: ["parser.c", "scanner.c"]
+    settings:
+      GCC_PRECOMPILE_PREFIX_HEADER: false
+      GCC_PREFIX_HEADER: ""
+      HEADER_SEARCH_PATHS: [$(inherited), $(SRCROOT)/vendor/tree-sitter/lib/include, $(SRCROOT)/vendor/tree-sitter-html/src]
+      WARNING_CFLAGS: "-w"
+
+  # ── Vendor: tree-sitter grammar — CSS ──
+  TreeSitterCSS:
+    type: library.static
+    platform: macOS
+    sources:
+      - path: vendor/tree-sitter-css/src
+        includes: ["parser.c", "scanner.c"]
+    settings:
+      GCC_PRECOMPILE_PREFIX_HEADER: false
+      GCC_PREFIX_HEADER: ""
+      HEADER_SEARCH_PATHS: [$(inherited), $(SRCROOT)/vendor/tree-sitter/lib/include]
+      WARNING_CFLAGS: "-w"
+
+  # ── Vendor: tree-sitter grammar — Markdown ──
+  TreeSitterMarkdown:
+    type: library.static
+    platform: macOS
+    sources:
+      - path: vendor/tree-sitter-markdown/tree-sitter-markdown/src
+        includes: ["parser.c", "scanner.c"]
+    settings:
+      GCC_PRECOMPILE_PREFIX_HEADER: false
+      GCC_PREFIX_HEADER: ""
+      HEADER_SEARCH_PATHS: [$(inherited), $(SRCROOT)/vendor/tree-sitter/lib/include, $(SRCROOT)/vendor/tree-sitter-markdown/tree-sitter-markdown/src]
+      WARNING_CFLAGS: "-w"
+
+  # ── Vendor: tree-sitter grammar — YAML ──
+  TreeSitterYAML:
+    type: library.static
+    platform: macOS
+    sources:
+      - path: vendor/tree-sitter-yaml/src
+        includes: ["parser.c", "scanner.c"]
+    settings:
+      GCC_PRECOMPILE_PREFIX_HEADER: false
+      GCC_PREFIX_HEADER: ""
+      HEADER_SEARCH_PATHS: [$(inherited), $(SRCROOT)/vendor/tree-sitter/lib/include, $(SRCROOT)/vendor/tree-sitter-yaml/src]
+      WARNING_CFLAGS: "-w"
+
   # ── Vendor: kvdb (ObjC key-value store, git submodule) ──
   kvdb:
     type: library.static
@@ -413,6 +536,15 @@ targets:
       - target: TreeSitter
       - target: TreeSitterJSON
       - target: TreeSitterC
+      - target: TreeSitterJS
+      - target: TreeSitterPython
+      - target: TreeSitterGo
+      - target: TreeSitterRust
+      - target: TreeSitterTS
+      - target: TreeSitterHTML
+      - target: TreeSitterCSS
+      - target: TreeSitterMarkdown
+      - target: TreeSitterYAML
       - sdk: AddressBook.framework
       - sdk: AudioToolbox.framework
       - sdk: Carbon.framework
@@ -534,12 +666,15 @@ targets:
   TextFellowiOS:
     type: application
     platform: iOS
+    scheme:
+      testAction:
+        targets: []
     deploymentTarget: "18.0"
     sources:
       - path: Applications/TextFellowiOS/src
     settings:
       PRODUCT_BUNDLE_IDENTIFIER: org.sw3t.TextFellow.ios
-      PRODUCT_NAME: TextFellow
+      PRODUCT_NAME: TextFellowiOS
       SWIFT_VERSION: "6.0"
       GENERATE_INFOPLIST_FILE: YES
       INFOPLIST_KEY_UILaunchScreen_Generation: YES
