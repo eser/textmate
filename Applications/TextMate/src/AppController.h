@@ -33,6 +33,7 @@
 
 - (IBAction)runPageLayout:(id)sender;
 - (IBAction)openFavorites:(id)sender;
+- (IBAction)showCommandPalette:(id)sender;
 @end
 
 @interface AppController (Documents)

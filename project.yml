@@ -70,6 +70,38 @@ targets:
         - $(SRCROOT)/vendor/tree-sitter/lib/src
       WARNING_CFLAGS: "-w"
 
+  # ── Vendor: tree-sitter grammar — JSON ──
+  TreeSitterJSON:
+    type: library.static
+    platform: macOS
+    sources:
+      - path: vendor/tree-sitter-json/src
+        includes: ["parser.c"]
+    settings:
+      GCC_PRECOMPILE_PREFIX_HEADER: false
+      GCC_PREFIX_HEADER: ""
+      HEADER_SEARCH_PATHS:
+        - $(inherited)
+        - $(SRCROOT)/vendor/tree-sitter/lib/include
+        - $(SRCROOT)/vendor/tree-sitter-json/src
+      WARNING_CFLAGS: "-w"
+
+  # ── Vendor: tree-sitter grammar — C ──
+  TreeSitterC:
+    type: library.static
+    platform: macOS
+    sources:
+      - path: vendor/tree-sitter-c/src
+        includes: ["parser.c"]
+    settings:
+      GCC_PRECOMPILE_PREFIX_HEADER: false
+      GCC_PREFIX_HEADER: ""
+      HEADER_SEARCH_PATHS:
+        - $(inherited)
+        - $(SRCROOT)/vendor/tree-sitter/lib/include
+        - $(SRCROOT)/vendor/tree-sitter-c/src
+      WARNING_CFLAGS: "-w"
+
   # ── Vendor: kvdb (ObjC key-value store, git submodule) ──
   kvdb:
     type: library.static
@@ -327,6 +359,12 @@ targets:
       - path: Frameworks/SW3TConfig/src
         includes: ["*.swift"]
         group: SW3TConfig
+      - path: Frameworks/SW3TExtensionHost/src
+        includes: ["*.swift"]
+        group: SW3TExtensionHost
+      - path: Frameworks/SW3TViews/src
+        includes: ["*.swift"]
+        group: SW3TViews
       # App resources
       - path: Applications/TextMate/resources
         buildPhase: resources
@@ -373,6 +411,8 @@ targets:
       - target: Onigmo
       - target: kvdb
       - target: TreeSitter
+      - target: TreeSitterJSON
+      - target: TreeSitterC
       - sdk: AddressBook.framework
       - sdk: AudioToolbox.framework
       - sdk: Carbon.framework
@@ -387,6 +427,9 @@ targets:
       - sdk: WebKit.framework
     info:
       path: Applications/TextMate/Info.plist
+      properties:
+        NSMainNibFile: MainMenu
+        NSPrincipalClass: NSApplication
     entitlements:
       path: Applications/TextMate/Entitlements.plist
     settings:
@@ -486,3 +529,19 @@ targets:
         - $(SRCROOT)/vendor/tree-sitter/lib/include
       PRODUCT_BUNDLE_IDENTIFIER: org.sw3t.TextFellowTests
       GENERATE_INFOPLIST_FILE: YES
+
+  # ── TextFellow iOS: SwiftUI app for iPad/iPhone ──
+  TextFellowiOS:
+    type: application
+    platform: iOS
+    deploymentTarget: "18.0"
+    sources:
+      - path: Applications/TextFellowiOS/src
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: org.sw3t.TextFellow.ios
+      PRODUCT_NAME: TextFellow
+      SWIFT_VERSION: "6.0"
+      GENERATE_INFOPLIST_FILE: YES
+      INFOPLIST_KEY_UILaunchScreen_Generation: YES
+      INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+      SUPPORTS_MACCATALYST: NO

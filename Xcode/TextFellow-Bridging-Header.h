@@ -9,3 +9,13 @@
 
 // tree-sitter C API
 #include <tree_sitter/api.h>
+
+// tree-sitter grammar entry points (C symbols — need extern "C" for ObjC++ mode)
+#ifdef __cplusplus
+extern "C" {
+#endif
+extern const TSLanguage *tree_sitter_json(void);
+extern const TSLanguage *tree_sitter_c(void);
+#ifdef __cplusplus
+}
+#endif

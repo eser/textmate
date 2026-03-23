@@ -15,6 +15,9 @@
 #import "AboutWindowController.h"
 #import "TMPlugInController.h"
 #import "RMateServer.h"
+#if __has_include("TextFellow-Swift.h")
+#import "TextFellow-Swift.h"
+#endif
 #import <BundleEditor/BundleEditor.h>
 #import <BundlesManager/BundlesManager.h>
 #import <CrashReporter/CrashReporter.h>
@@ -311,6 +314,8 @@ BOOL HasDocumentWindow (NSArray* windows)
 		},
 		{ @"Navigate",
 			.submenu = {
+				{ @"Command Palette…",           @selector(showCommandPalette:),           @"k" },
+				{ /* -------- */ },
 				{ @"Jump to Line…",              @selector(orderFrontGoToLinePanel:),      @"l" },
 				{ @"Jump to Symbol…",            @selector(showSymbolChooser:),            @"T" },
 				{ @"Jump to Selection",          @selector(centerSelectionInVisibleArea:), @"j" },
@@ -627,7 +632,39 @@ BOOL HasDocumentWindow (NSArray* windows)
 	[OakCommitWindowServer sharedInstance]; // Setup server
 
 	self.didFinishLaunching = YES;
+
+#if __has_include("TextFellow-Swift.h")
+	[self registerCommandPaletteItems];
+#endif
 }
+
+#if __has_include("TextFellow-Swift.h")
+- (void)registerCommandPaletteItems
+{
+	CommandPaletteController* cp = [CommandPaletteController shared];
+
+	// File commands
+	[cp registerItemWithId:@"file.new"      title:@"New File"           category:@"File"     shortcut:@"⌘N"  target:self selector:@selector(newDocument:)];
+	[cp registerItemWithId:@"file.open"     title:@"Open File…"         category:@"File"     shortcut:@"⌘O"  target:self selector:@selector(openDocument:)];
+	[cp registerItemWithId:@"file.save"     title:@"Save"               category:@"File"     shortcut:@"⌘S"  target:self selector:@selector(saveDocument:)];
+	[cp registerItemWithId:@"file.saveas"   title:@"Save As…"           category:@"File"     shortcut:@"⇧⌘S" target:self selector:@selector(saveDocumentAs:)];
+	[cp registerItemWithId:@"file.close"    title:@"Close Tab"          category:@"File"     shortcut:@"⌘W"  target:self selector:@selector(performClose:)];
+
+	// Navigate commands
+	[cp registerItemWithId:@"nav.gotoline"  title:@"Jump to Line…"      category:@"Navigate" shortcut:@"⌘L"  target:self selector:@selector(orderFrontGoToLinePanel:)];
+	[cp registerItemWithId:@"nav.gotofile"  title:@"Open Quickly…"      category:@"Navigate" shortcut:@"⌘T"  target:self selector:@selector(goToFile:)];
+	[cp registerItemWithId:@"nav.symbol"    title:@"Jump to Symbol…"    category:@"Navigate" shortcut:@"⇧⌘T" target:self selector:@selector(showSymbolChooser:)];
+
+	// Edit commands
+	[cp registerItemWithId:@"edit.find"     title:@"Find…"              category:@"Edit"     shortcut:@"⌘F"  target:self selector:@selector(orderFrontFindPanel:)];
+	[cp registerItemWithId:@"edit.bundle"   title:@"Select Bundle Item" category:@"Edit"     shortcut:@"⌃⌘T" target:self selector:@selector(showBundleItemChooser:)];
+
+	// Settings
+	[cp registerItemWithId:@"app.prefs"     title:@"Preferences…"       category:@"App"      shortcut:@"⌘,"  target:self selector:@selector(showPreferences:)];
+	[cp registerItemWithId:@"app.bundles"   title:@"Edit Bundles…"      category:@"App"      shortcut:@"⌃⌥⌘B" target:self selector:@selector(showBundleEditor:)];
+	[cp registerItemWithId:@"app.about"     title:@"About TextFellow"   category:@"App"      shortcut:nil    target:self selector:@selector(orderFrontAboutPanel:)];
+}
+#endif
 
 - (void)applicationWillResignActive:(NSNotification*)aNotification
 {
@@ -735,6 +772,13 @@ BOOL HasDocumentWindow (NSArray* windows)
 - (IBAction)showBundleEditor:(id)sender
 {
 	[BundleEditor.sharedInstance showWindow:self];
+}
+
+- (IBAction)showCommandPalette:(id)sender
+{
+#if __has_include("TextFellow-Swift.h")
+	[[CommandPaletteController shared] showPalette];
+#endif
 }
 
 - (IBAction)openFavorites:(id)sender

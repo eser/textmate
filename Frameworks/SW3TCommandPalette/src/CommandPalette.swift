@@ -1,15 +1,13 @@
-// SW3 TextFellow — Command Palette
+// SW³ TextFellow — Command Palette
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// AppKit-based command palette (Cmd+Shift+P). Floating NSPanel with
-// fuzzy-filtered search field and results table. Designed to be called
-// from existing ObjC++ code via @objc.
+// AppKit command palette (⌘K). Appears inside the active window,
+// snapped to the top center of the key window's content area.
 
 import AppKit
 
 // MARK: - Data Model
 
-/// A single command palette entry.
 public struct CommandItem: Sendable {
     public let id: String
     public let title: String
@@ -34,34 +32,21 @@ public struct CommandItem: Sendable {
 
 // MARK: - Controller
 
-/// Command palette window controller. Presents a floating panel with a
-/// search field and filterable results list.
-///
-/// Usage from ObjC++:
-///     [[CommandPaletteController shared] showPalette];
-///
 @MainActor
 @objc public final class CommandPaletteController: NSWindowController {
 
-    // MARK: - Singleton
-
     @objc public static let shared = CommandPaletteController()
 
-    // MARK: - Constants
-
-    private static let panelWidth: CGFloat = 500
-    private static let panelMaxHeight: CGFloat = 300
-    private static let searchFieldHeight: CGFloat = 32
+    private static let paletteWidth: CGFloat = 480
+    private static let maxVisibleRows: Int = 10
+    private static let searchHeight: CGFloat = 28
     private static let rowHeight: CGFloat = 28
-
-    // MARK: - State
+    private static let padding: CGFloat = 12
 
     private var allItems: [CommandItem] = []
     private var filteredItems: [CommandItem] = []
 
-    // MARK: - Views
-
-    private let searchField = NSTextField()
+    private let searchField = NSSearchField()
     private let scrollView = NSScrollView()
     private let tableView = NSTableView()
 
@@ -69,12 +54,8 @@ public struct CommandItem: Sendable {
 
     private init() {
         let panel = NSPanel(
-            contentRect: NSRect(
-                x: 0, y: 0,
-                width: Self.panelWidth,
-                height: Self.panelMaxHeight
-            ),
-            styleMask: [.titled, .fullSizeContentView, .nonactivatingPanel],
+            contentRect: NSRect(x: 0, y: 0, width: Self.paletteWidth, height: Self.panelHeight(forRowCount: Self.maxVisibleRows)),
+            styleMask: [.titled, .fullSizeContentView, .nonactivatingPanel, .hudWindow],
             backing: .buffered,
             defer: true
         )
@@ -83,32 +64,38 @@ public struct CommandItem: Sendable {
         panel.titlebarAppearsTransparent = true
         panel.titleVisibility = .hidden
         panel.isMovableByWindowBackground = false
-        panel.backgroundColor = NSColor.windowBackgroundColor
         panel.hasShadow = true
         panel.isReleasedWhenClosed = false
+        panel.animationBehavior = .utilityWindow
+        panel.hidesOnDeactivate = true
+        panel.becomesKeyOnlyIfNeeded = false
 
         super.init(window: panel)
-
         setupSearchField()
         setupTableView()
         layoutViews()
+
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(windowDidResignKey(_:)),
+            name: NSWindow.didResignKeyNotification, object: panel
+        )
     }
 
     @available(*, unavailable)
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) is not supported")
+    required init?(coder: NSCoder) { fatalError() }
+
+    private static func panelHeight(forRowCount count: Int) -> CGFloat {
+        padding + searchHeight + 6 + CGFloat(count) * rowHeight + padding
     }
 
     // MARK: - Public API
 
-    /// Register command items.
     public func registerItems(_ items: [CommandItem]) {
         allItems = items
         filteredItems = items
         tableView.reloadData()
     }
 
-    /// Convenience to register from ObjC using dictionaries.
     @objc public func registerItem(
         id: String,
         title: String,
@@ -119,13 +106,9 @@ public struct CommandItem: Sendable {
     ) {
         let weakTarget = target
         let item = CommandItem(
-            id: id,
-            title: title,
-            category: category,
-            shortcut: shortcut,
-            action: { [weak weakTarget] in
-                guard let t = weakTarget else { return }
-                _ = t.perform(selector)
+            id: id, title: title, category: category, shortcut: shortcut,
+            action: {
+                NSApp.sendAction(selector, to: nil, from: nil)
             }
         )
         allItems.append(item)
@@ -133,35 +116,49 @@ public struct CommandItem: Sendable {
         tableView.reloadData()
     }
 
-    /// Show the palette, centered horizontally on the main screen.
+    /// Show the palette snapped to the top center of the key window.
     @objc public func showPalette() {
-        guard let screen = NSScreen.main else { return }
+        // Snap to active window, fall back to screen center
+        let hostFrame: NSRect
+        if let keyWindow = NSApp.keyWindow, keyWindow !== window {
+            hostFrame = keyWindow.frame
+        } else if let mainWindow = NSApp.mainWindow {
+            hostFrame = mainWindow.frame
+        } else if let screen = NSScreen.main {
+            hostFrame = screen.visibleFrame
+        } else {
+            return
+        }
 
-        let screenFrame = screen.visibleFrame
-        let panelX = screenFrame.midX - Self.panelWidth / 2
-        let panelY = screenFrame.maxY - Self.panelMaxHeight - 100 // near top
+        let visibleRows = min(allItems.count, Self.maxVisibleRows)
+        let totalHeight = Self.panelHeight(forRowCount: visibleRows)
+
+        let x = hostFrame.midX - Self.paletteWidth / 2
+        let y = hostFrame.maxY - totalHeight - 40
 
         window?.setFrame(
-            NSRect(
-                x: panelX, y: panelY,
-                width: Self.panelWidth,
-                height: Self.panelMaxHeight
-            ),
+            NSRect(x: x, y: y, width: Self.paletteWidth, height: totalHeight),
             display: true
         )
 
         filteredItems = allItems
         searchField.stringValue = ""
         tableView.reloadData()
+        if !filteredItems.isEmpty {
+            tableView.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
+        }
 
         showWindow(nil)
         window?.makeKeyAndOrderFront(nil)
         window?.makeFirstResponder(searchField)
     }
 
-    /// Dismiss the palette.
     @objc public func dismissPalette() {
         close()
+    }
+
+    @objc private func windowDidResignKey(_ notification: Notification) {
+        dismissPalette()
     }
 
     // MARK: - View Setup
@@ -169,39 +166,28 @@ public struct CommandItem: Sendable {
     private func setupSearchField() {
         searchField.translatesAutoresizingMaskIntoConstraints = false
         searchField.placeholderString = "Type a command..."
-        searchField.font = NSFont.systemFont(ofSize: 15)
-        searchField.bezelStyle = .roundedBezel
+        searchField.font = NSFont.systemFont(ofSize: 13)
         searchField.focusRingType = .none
         searchField.delegate = self
-        searchField.target = self
-        searchField.action = #selector(searchFieldAction(_:))
+        // Don't set target/action — NSSearchField sends action after a delay.
+        // Return key is handled via control(_:textView:doCommandBy:) instead.
     }
 
     private func setupTableView() {
-        let titleColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("title"))
-        titleColumn.title = "Command"
-        titleColumn.width = Self.panelWidth * 0.55
-
-        let categoryColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("category"))
-        categoryColumn.title = "Category"
-        categoryColumn.width = Self.panelWidth * 0.2
-
-        let shortcutColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("shortcut"))
-        shortcutColumn.title = "Shortcut"
-        shortcutColumn.width = Self.panelWidth * 0.2
-
-        tableView.addTableColumn(titleColumn)
-        tableView.addTableColumn(categoryColumn)
-        tableView.addTableColumn(shortcutColumn)
+        // Single column — we draw the full row ourselves via NSView-based cells
+        let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("row"))
+        column.width = Self.paletteWidth
+        tableView.addTableColumn(column)
 
         tableView.headerView = nil
         tableView.rowHeight = Self.rowHeight
         tableView.backgroundColor = .clear
         tableView.selectionHighlightStyle = .regular
-        tableView.intercellSpacing = NSSize(width: 8, height: 2)
+        tableView.intercellSpacing = NSSize(width: 0, height: 1)
         tableView.delegate = self
         tableView.dataSource = self
         tableView.doubleAction = #selector(tableDoubleClick(_:))
+        tableView.action = #selector(tableClick(_:))
         tableView.target = self
 
         scrollView.translatesAutoresizingMaskIntoConstraints = false
@@ -217,10 +203,10 @@ public struct CommandItem: Sendable {
         contentView.addSubview(scrollView)
 
         NSLayoutConstraint.activate([
-            searchField.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 8),
+            searchField.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 12),
             searchField.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 12),
             searchField.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -12),
-            searchField.heightAnchor.constraint(equalToConstant: Self.searchFieldHeight),
+            searchField.heightAnchor.constraint(equalToConstant: Self.searchHeight),
 
             scrollView.topAnchor.constraint(equalTo: searchField.bottomAnchor, constant: 6),
             scrollView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
@@ -231,38 +217,25 @@ public struct CommandItem: Sendable {
 
     // MARK: - Filtering
 
-    /// Simple substring-based fuzzy match.
     private func fuzzyMatch(_ query: String, in text: String) -> Bool {
         if query.isEmpty { return true }
-        let lowerQuery = query.lowercased()
-        let lowerText = text.lowercased()
-
-        // Substring match
-        if lowerText.contains(lowerQuery) { return true }
-
-        // Character-by-character fuzzy match
-        var queryIndex = lowerQuery.startIndex
-        for char in lowerText {
-            if char == lowerQuery[queryIndex] {
-                queryIndex = lowerQuery.index(after: queryIndex)
-                if queryIndex == lowerQuery.endIndex { return true }
+        let q = query.lowercased(), t = text.lowercased()
+        if t.contains(q) { return true }
+        var qi = q.startIndex
+        for ch in t {
+            if ch == q[qi] {
+                qi = q.index(after: qi)
+                if qi == q.endIndex { return true }
             }
         }
         return false
     }
 
     private func applyFilter(_ query: String) {
-        if query.isEmpty {
-            filteredItems = allItems
-        } else {
-            filteredItems = allItems.filter { item in
-                fuzzyMatch(query, in: item.title)
-                    || fuzzyMatch(query, in: item.category)
-            }
+        filteredItems = query.isEmpty ? allItems : allItems.filter {
+            fuzzyMatch(query, in: $0.title) || fuzzyMatch(query, in: $0.category)
         }
         tableView.reloadData()
-
-        // Auto-select first row if available
         if !filteredItems.isEmpty {
             tableView.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
         }
@@ -270,13 +243,9 @@ public struct CommandItem: Sendable {
 
     // MARK: - Actions
 
-    @objc private func searchFieldAction(_ sender: Any?) {
-        executeSelectedItem()
-    }
-
-    @objc private func tableDoubleClick(_ sender: Any?) {
-        executeSelectedItem()
-    }
+    @objc private func searchFieldAction(_ sender: Any?) { executeSelectedItem() }
+    @objc private func tableClick(_ sender: Any?) { executeSelectedItem() }
+    @objc private func tableDoubleClick(_ sender: Any?) { executeSelectedItem() }
 
     private func executeSelectedItem() {
         let row = tableView.selectedRow
@@ -289,91 +258,113 @@ public struct CommandItem: Sendable {
 
 // MARK: - NSTextFieldDelegate
 
-extension CommandPaletteController: NSTextFieldDelegate {
+extension CommandPaletteController: NSSearchFieldDelegate {
     public func controlTextDidChange(_ obj: Notification) {
         applyFilter(searchField.stringValue)
     }
 
-    /// Handle arrow keys and Return in the search field.
-    public func control(
-        _ control: NSControl,
-        textView: NSTextView,
-        doCommandBy commandSelector: Selector
-    ) -> Bool {
-        if commandSelector == #selector(NSResponder.moveDown(_:)) {
-            let nextRow = min(tableView.selectedRow + 1, filteredItems.count - 1)
-            tableView.selectRowIndexes(IndexSet(integer: nextRow), byExtendingSelection: false)
-            tableView.scrollRowToVisible(nextRow)
+    public func control(_ control: NSControl, textView: NSTextView, doCommandBy sel: Selector) -> Bool {
+        switch sel {
+        case #selector(NSResponder.moveDown(_:)):
+            let next = min(tableView.selectedRow + 1, filteredItems.count - 1)
+            tableView.selectRowIndexes(IndexSet(integer: next), byExtendingSelection: false)
+            tableView.scrollRowToVisible(next)
             return true
-        }
-        if commandSelector == #selector(NSResponder.moveUp(_:)) {
-            let prevRow = max(tableView.selectedRow - 1, 0)
-            tableView.selectRowIndexes(IndexSet(integer: prevRow), byExtendingSelection: false)
-            tableView.scrollRowToVisible(prevRow)
+        case #selector(NSResponder.moveUp(_:)):
+            let prev = max(tableView.selectedRow - 1, 0)
+            tableView.selectRowIndexes(IndexSet(integer: prev), byExtendingSelection: false)
+            tableView.scrollRowToVisible(prev)
             return true
-        }
-        if commandSelector == #selector(NSResponder.insertNewline(_:)) {
+        case #selector(NSResponder.insertNewline(_:)):
             executeSelectedItem()
             return true
-        }
-        if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
+        case #selector(NSResponder.cancelOperation(_:)):
             dismissPalette()
             return true
+        default:
+            return false
         }
-        return false
     }
 }
 
-// MARK: - NSTableViewDataSource
+// MARK: - NSTableViewDataSource & Delegate
 
 extension CommandPaletteController: NSTableViewDataSource {
-    public func numberOfRows(in tableView: NSTableView) -> Int {
-        filteredItems.count
-    }
+    public func numberOfRows(in tableView: NSTableView) -> Int { filteredItems.count }
 }
 
-// MARK: - NSTableViewDelegate
-
 extension CommandPaletteController: NSTableViewDelegate {
-    public func tableView(
-        _ tableView: NSTableView,
-        viewFor tableColumn: NSTableColumn?,
-        row: Int
-    ) -> NSView? {
+    public func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         guard row < filteredItems.count else { return nil }
         let item = filteredItems[row]
 
-        let cellID = NSUserInterfaceItemIdentifier("CommandCell")
-        let cell: NSTextField
-        if let reused = tableView.makeView(withIdentifier: cellID, owner: nil) as? NSTextField {
-            cell = reused
+        let cellID = NSUserInterfaceItemIdentifier("PaletteRow")
+        let rowView: PaletteRowView
+        if let reused = tableView.makeView(withIdentifier: cellID, owner: nil) as? PaletteRowView {
+            rowView = reused
         } else {
-            cell = NSTextField(labelWithString: "")
-            cell.identifier = cellID
-            cell.isEditable = false
-            cell.isBordered = false
-            cell.drawsBackground = false
-            cell.lineBreakMode = .byTruncatingTail
+            rowView = PaletteRowView()
+            rowView.identifier = cellID
+        }
+        rowView.configure(title: item.title, category: item.category, shortcut: item.shortcut)
+        return rowView
+    }
+}
+
+// MARK: - Row View
+
+/// Custom row view with properly aligned title, category, and shortcut.
+private final class PaletteRowView: NSView {
+    private let titleLabel = NSTextField(labelWithString: "")
+    private let categoryLabel = NSTextField(labelWithString: "")
+    private let shortcutLabel = NSTextField(labelWithString: "")
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        for label in [titleLabel, categoryLabel, shortcutLabel] {
+            label.translatesAutoresizingMaskIntoConstraints = false
+            label.isEditable = false
+            label.isBordered = false
+            label.drawsBackground = false
+            label.lineBreakMode = .byTruncatingTail
+            addSubview(label)
         }
 
-        switch tableColumn?.identifier.rawValue {
-        case "title":
-            cell.stringValue = item.title
-            cell.font = NSFont.systemFont(ofSize: 13)
-            cell.textColor = NSColor.labelColor
-        case "category":
-            cell.stringValue = item.category
-            cell.font = NSFont.systemFont(ofSize: 11)
-            cell.textColor = NSColor.secondaryLabelColor
-        case "shortcut":
-            cell.stringValue = item.shortcut ?? ""
-            cell.font = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
-            cell.textColor = NSColor.tertiaryLabelColor
-            cell.alignment = .right
-        default:
-            break
-        }
+        titleLabel.font = .systemFont(ofSize: 13)
+        titleLabel.textColor = .labelColor
+        titleLabel.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
-        return cell
+        categoryLabel.font = .systemFont(ofSize: 11)
+        categoryLabel.textColor = .tertiaryLabelColor
+        categoryLabel.alignment = .right
+        categoryLabel.setContentHuggingPriority(.defaultHigh, for: .horizontal)
+
+        shortcutLabel.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
+        shortcutLabel.textColor = .secondaryLabelColor
+        shortcutLabel.alignment = .right
+        shortcutLabel.setContentHuggingPriority(.required, for: .horizontal)
+
+        NSLayoutConstraint.activate([
+            titleLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
+            titleLabel.firstBaselineAnchor.constraint(equalTo: topAnchor, constant: 19),
+
+            categoryLabel.firstBaselineAnchor.constraint(equalTo: titleLabel.firstBaselineAnchor),
+            categoryLabel.leadingAnchor.constraint(greaterThanOrEqualTo: titleLabel.trailingAnchor, constant: 12),
+            categoryLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 60),
+
+            shortcutLabel.firstBaselineAnchor.constraint(equalTo: titleLabel.firstBaselineAnchor),
+            shortcutLabel.leadingAnchor.constraint(equalTo: categoryLabel.trailingAnchor, constant: 12),
+            shortcutLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14),
+            shortcutLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 40),
+        ])
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    func configure(title: String, category: String, shortcut: String?) {
+        titleLabel.stringValue = title
+        categoryLabel.stringValue = category
+        shortcutLabel.stringValue = shortcut ?? ""
     }
 }

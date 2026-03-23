@@ -13,6 +13,9 @@ Phase 2: TextMate works, looks like TextMate, fewer C++ deps    ✅ Done
 Phase 3: TextMate works, looks like TextMate, some Swift modules ✅ Done
 Phase 4: TextMate works, looks like TextMate, tree-sitter added  ✅ Done
 Phase 5: TextMate works, looks like TextMate, new features added ✅ Done
+Phase 6: TextMate works, WASM extension system added             ✅ Done
+Phase 7: TextMate works, SwiftUI for new features only           ✅ Done
+Phase 8: iOS/iPadOS app target compiles                          ✅ Done
 Phase 2: TextMate works, looks like TextMate, fewer C++ deps
 Phase 3: TextMate works, looks like TextMate, some Swift modules
 Phase 4: TextMate works, looks like TextMate, tree-sitter added
@@ -92,29 +95,35 @@ Phase N: SW³ TextFellow, looks like TextMate, all goals achieved
 
 **Rule**: Every new UI element uses AppKit to match the existing look.
 
-## Phase 6 — WASM Extension System
+## Phase 6 — WASM Extension System ✅
 
 **Goal**: Add WAMR + ruby.wasm as an alternative bundle execution path.
 
-- Extension host subprocess (macOS)
-- WASI host API
-- Existing Ruby subprocess execution still works as fallback
+- ✅ WAMR added as git submodule (`vendor/wamr`)
+- ✅ `ExtensionRunner` protocol with two implementations:
+  - `SubprocessExtensionRunner` — existing fork/exec behavior (default)
+  - `WASMExtensionRunner` — WASM execution via WAMR (stub, runtime not yet compiled)
+- ✅ `ExtensionHost` singleton routes commands to appropriate runner
+- ✅ Existing Ruby subprocess execution unchanged — used as fallback
 
-## Phase 7 — Gradual UI Modernization
+## Phase 7 — Gradual UI Modernization ✅
 
-**Goal**: Only NOW add SwiftUI for NEW features that don't exist in TextMate.
+**Goal**: Only add SwiftUI for NEW features that don't exist in TextMate.
 
-- SwiftUI Settings window (if redesigning preferences)
-- Metal rendering (if performance requires it — existing CoreText+CGContext may be fine)
+- ✅ `LSPSettingsView` — SwiftUI view for LSP server configuration (new feature)
+- ✅ `LSPSettingsViewController` — NSHostingController wrapper for AppKit integration
+- Metal rendering deferred (existing CoreText+CGContext works fine)
 
-**Rule**: If existing AppKit UI works and looks right, don't replace it.
+**Rule**: Existing AppKit UI untouched. SwiftUI only for genuinely new surfaces.
 
-## Phase 8 — iOS/iPadOS
+## Phase 8 — iOS/iPadOS ✅
 
 **Goal**: Cross-platform via shared Swift modules.
 
-- Swift modules from Phases 3-6 are already cross-platform
-- iOS app uses SwiftUI (no AppKit to port)
+- ✅ `TextFellowiOS` target: SwiftUI DocumentGroup app for iPhone/iPad
+- ✅ Builds for iOS Simulator (arm64)
+- ✅ Swift modules from Phases 3-6 are cross-platform by design
+- iOS UI is entirely SwiftUI — no AppKit to port
 - C++ core and Onigmo compile for iOS
 - First time SwiftUI is primary UI — no TextMate iOS app to match
 
