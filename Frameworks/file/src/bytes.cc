@@ -35,9 +35,7 @@ namespace io
 
 	uint32_t bytes_t::crc32 () const
 	{
-		boost::crc_32_type result;
-		result.process_bytes(_bytes, _size);
-		return result.checksum();
+		return (uint32_t)::crc32(::crc32(0L, Z_NULL, 0), (Bytef const*)_bytes, (uInt)_size);
 	}
 
 } /* io */

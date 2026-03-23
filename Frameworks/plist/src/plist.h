@@ -5,17 +5,24 @@
 #include "uuid.h"
 #include <text/format.h>
 #include <oak/debug.h>
+#include <variant>
 
 namespace plist
 {
-	typedef boost::make_recursive_variant<
-		bool, int32_t, uint64_t, std::string, std::vector<char>, oak::date_t,
-		std::vector<boost::recursive_variant_>,
-		std::map<std::string, boost::recursive_variant_>
-	>::type any_t;
-
-	typedef std::map<std::string, any_t> dictionary_t;
+	struct any_t;
 	typedef std::vector<any_t> array_t;
+	typedef std::map<std::string, any_t> dictionary_t;
+
+	struct any_t : std::variant<
+		bool, int32_t, uint64_t, std::string, std::vector<char>, oak::date_t,
+		array_t, dictionary_t
+	>
+	{
+		using variant::variant;
+		using variant::operator=;
+		any_t () : variant(false) { }
+		bool empty () const { return false; }
+	};
 
 	enum plist_format_t { kPlistFormatBinary, kPlistFormatXML };
 
@@ -36,9 +43,6 @@ namespace plist
 
 } /* plist */
 
-namespace boost // we place this in the boost namespace to support ADL
-{
-	std::string to_s (plist::any_t const& plist, int flags = plist::kStandard, std::vector<std::string> const& keySortOrder = std::vector<std::string>());
-}
+std::string to_s (plist::any_t const& plist, int flags = plist::kStandard, std::vector<std::string> const& keySortOrder = std::vector<std::string>());
 
 #endif /* end of include guard: PLIST_H_34L7NUFO */

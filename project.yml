@@ -1,0 +1,488 @@
+# project.yml — SW³ TextFellow
+# XcodeGen specification for generating TextFellow.xcodeproj
+# Run: xcodegen generate
+#
+# This file mirrors the Rave build system. Both must produce identical binaries.
+
+name: TextFellow
+
+options:
+  bundleIdPrefix: org.sw3t
+  deploymentTarget:
+    macOS: "15.0"
+  xcodeVersion: "16.0"
+  createIntermediateGroups: true
+  groupSortPosition: top
+
+configs:
+  Debug: debug
+  Release: release
+
+configFiles:
+  Debug: Xcode/Debug.xcconfig
+  Release: Xcode/Release.xcconfig
+
+fileGroups:
+  - Xcode
+  - Shared
+
+# ─────────────────────────────────────────────────
+# Targets
+# ─────────────────────────────────────────────────
+
+targets:
+
+  # ── Vendor: Onigmo (C regex library, git submodule) ──
+  Onigmo:
+    type: library.static
+    platform: macOS
+    sources:
+      - path: vendor/Onigmo/vendor
+        includes: ["*.c", "*.h"]
+        excludes: ["test*.c", "mktable.c"]
+        headerVisibility: project
+      - path: vendor/Onigmo/vendor/enc
+        includes: ["*.c"]
+        headerVisibility: project
+    settings:
+      GCC_PRECOMPILE_PREFIX_HEADER: false
+      GCC_PREFIX_HEADER: ""
+      HEADER_SEARCH_PATHS:
+        - $(inherited)
+        - $(SRCROOT)/vendor/Onigmo/vendor
+        - $(SRCROOT)/vendor/Onigmo
+      WARNING_CFLAGS: "-w"
+
+  # ── Vendor: tree-sitter (incremental parsing library, git submodule) ──
+  TreeSitter:
+    type: library.static
+    platform: macOS
+    sources:
+      - path: vendor/tree-sitter/lib/src
+        includes: ["lib.c"]
+        headerVisibility: project
+    settings:
+      GCC_PRECOMPILE_PREFIX_HEADER: false
+      GCC_PREFIX_HEADER: ""
+      HEADER_SEARCH_PATHS:
+        - $(inherited)
+        - $(SRCROOT)/vendor/tree-sitter/lib/include
+        - $(SRCROOT)/vendor/tree-sitter/lib/src
+      WARNING_CFLAGS: "-w"
+
+  # ── Vendor: kvdb (ObjC key-value store, git submodule) ──
+  kvdb:
+    type: library.static
+    platform: macOS
+    sources:
+      - path: vendor/kvdb/vendor/kvdb
+        includes: ["*.m", "*.h"]
+        headerVisibility: project
+    settings:
+      HEADER_SEARCH_PATHS:
+        - $(inherited)
+        - $(SRCROOT)/vendor/kvdb/vendor
+      WARNING_CFLAGS: "-w"
+
+  # ── TextFellowCore: all framework sources in one static library ──
+  TextFellowCore:
+    type: library.static
+    platform: macOS
+    sources:
+      - path: Frameworks/authorization/src
+        group: Frameworks/authorization
+        excludes: ["t_*"]
+        headerVisibility: project
+      - path: Frameworks/buffer/src
+        group: Frameworks/buffer
+        excludes: ["t_*"]
+        headerVisibility: project
+      - path: Frameworks/BundleEditor/src
+        group: Frameworks/BundleEditor
+        excludes: ["t_*"]
+        headerVisibility: project
+      - path: Frameworks/BundleMenu/src
+        group: Frameworks/BundleMenu
+        excludes: ["t_*"]
+        headerVisibility: project
+      - path: Frameworks/bundles/src
+        group: Frameworks/bundles
+        excludes: ["t_*"]
+        headerVisibility: project
+      - path: Frameworks/BundlesManager/src
+        group: Frameworks/BundlesManager
+        excludes: ["t_*"]
+        headerVisibility: project
+      - path: Frameworks/cf/src
+        group: Frameworks/cf
+        excludes: ["t_*"]
+        headerVisibility: project
+      - path: Frameworks/command/src
+        group: Frameworks/command
+        excludes: ["t_*"]
+        headerVisibility: project
+      - path: Frameworks/CommitWindow/src
+        group: Frameworks/CommitWindow
+        excludes: ["t_*"]
+        headerVisibility: project
+      - path: Frameworks/crash/src
+        group: Frameworks/crash
+        excludes: ["t_*"]
+        headerVisibility: project
+      - path: Frameworks/CrashReporter/src
+        group: Frameworks/CrashReporter
+        excludes: ["t_*"]
+        headerVisibility: project
+      - path: Frameworks/document/src
+        group: Frameworks/document
+        excludes: ["t_*"]
+        headerVisibility: project
+      - path: Frameworks/DocumentWindow/src
+        group: Frameworks/DocumentWindow
+        excludes: ["t_*"]
+        headerVisibility: project
+      - path: Frameworks/editor/src
+        group: Frameworks/editor
+        excludes: ["t_*"]
+        headerVisibility: project
+      - path: Frameworks/encoding/src
+        group: Frameworks/encoding
+        excludes: ["t_*"]
+        headerVisibility: project
+      - path: Frameworks/file/src
+        group: Frameworks/file
+        excludes: ["t_*"]
+        headerVisibility: project
+      - path: Frameworks/FileBrowser/src
+        group: Frameworks/FileBrowser
+        excludes: ["t_*"]
+        headerVisibility: project
+      - path: Frameworks/Find/src
+        group: Frameworks/Find
+        excludes: ["t_*"]
+        headerVisibility: project
+      - path: Frameworks/HTMLOutput/src
+        group: Frameworks/HTMLOutput
+        excludes: ["t_*"]
+        headerVisibility: project
+      - path: Frameworks/HTMLOutputWindow/src
+        group: Frameworks/HTMLOutputWindow
+        excludes: ["t_*"]
+        headerVisibility: project
+      - path: Frameworks/io/src
+        group: Frameworks/io
+        excludes: ["t_*"]
+        headerVisibility: project
+      - path: Frameworks/layout/src
+        group: Frameworks/layout
+        excludes: ["t_*"]
+        headerVisibility: project
+      - path: Frameworks/license/src
+        group: Frameworks/license
+        excludes: ["t_*"]
+        headerVisibility: project
+      - path: Frameworks/MenuBuilder/src
+        group: Frameworks/MenuBuilder
+        excludes: ["t_*"]
+        headerVisibility: project
+      - path: Frameworks/network/src
+        group: Frameworks/network
+        excludes: ["t_*"]
+        headerVisibility: project
+      - path: Frameworks/ns/src
+        group: Frameworks/ns
+        excludes: ["t_*"]
+        headerVisibility: project
+      - path: Frameworks/OakAppKit/src
+        group: Frameworks/OakAppKit
+        excludes: ["t_*"]
+        headerVisibility: project
+      - path: Frameworks/OakCommand/src
+        group: Frameworks/OakCommand
+        excludes: ["t_*"]
+        headerVisibility: project
+      - path: Frameworks/OakDebug/src
+        group: Frameworks/OakDebug
+        excludes: ["t_*"]
+        headerVisibility: project
+      - path: Frameworks/OakFilterList/src
+        group: Frameworks/OakFilterList
+        excludes: ["t_*"]
+        headerVisibility: project
+      - path: Frameworks/OakFoundation/src
+        group: Frameworks/OakFoundation
+        excludes: ["t_*"]
+        headerVisibility: project
+      - path: Frameworks/OakSystem/src
+        group: Frameworks/OakSystem
+        excludes: ["t_*"]
+        headerVisibility: project
+      - path: Frameworks/OakTabBarView/src
+        group: Frameworks/OakTabBarView
+        excludes: ["t_*"]
+        headerVisibility: project
+      - path: Frameworks/OakTextView/src
+        group: Frameworks/OakTextView
+        excludes: ["t_*"]
+        headerVisibility: project
+      - path: Frameworks/parse/src
+        group: Frameworks/parse
+        excludes: ["t_*"]
+        headerVisibility: project
+      - path: Frameworks/plist/src
+        group: Frameworks/plist
+        excludes: ["t_*"]
+        headerVisibility: project
+      - path: Frameworks/Preferences/src
+        group: Frameworks/Preferences
+        excludes: ["t_*"]
+        headerVisibility: project
+      - path: Frameworks/regexp/src
+        group: Frameworks/regexp
+        excludes: ["t_*"]
+        headerVisibility: project
+      - path: Frameworks/scm/src
+        group: Frameworks/scm
+        excludes: ["t_*"]
+        headerVisibility: project
+      - path: Frameworks/scope/src
+        group: Frameworks/scope
+        excludes: ["t_*"]
+        headerVisibility: project
+      - path: Frameworks/selection/src
+        group: Frameworks/selection
+        excludes: ["t_*"]
+        headerVisibility: project
+      - path: Frameworks/settings/src
+        group: Frameworks/settings
+        excludes: ["t_*"]
+        headerVisibility: project
+      - path: Frameworks/SoftwareUpdate/src
+        group: Frameworks/SoftwareUpdate
+        excludes: ["t_*"]
+        headerVisibility: project
+      - path: Frameworks/text/src
+        group: Frameworks/text
+        excludes: ["t_*"]
+        headerVisibility: project
+      - path: Frameworks/theme/src
+        group: Frameworks/theme
+        excludes: ["t_*"]
+        headerVisibility: project
+      - path: Frameworks/TMFileReference/src
+        group: Frameworks/TMFileReference
+        excludes: ["t_*"]
+        headerVisibility: project
+      - path: Frameworks/undo/src
+        group: Frameworks/undo
+        excludes: ["t_*"]
+        headerVisibility: project
+      - path: Frameworks/updater/src
+        group: Frameworks/updater
+        excludes: ["t_*"]
+        headerVisibility: project
+      - path: build/xcode/generated
+        group: Generated
+        includes: ["*.cc", "*.c++", "*.h"]
+        optional: true
+        headerVisibility: project
+    dependencies:
+      - target: Onigmo
+      - target: kvdb
+    preBuildScripts:
+      - name: Generate Header Symlinks
+        script: |
+          "${SRCROOT}/Xcode/gen-header-symlinks.sh"
+        basedOnDependencyAnalysis: false
+    buildRules:
+      - filePattern: "*.rl"
+        script: |
+          ragel -o "${DERIVED_FILE_DIR}/${INPUT_FILE_BASE}.cc" "${INPUT_FILE_PATH}"
+        outputFiles:
+          - $(DERIVED_FILE_DIR)/$(INPUT_FILE_BASE).cc
+    settings:
+      HEADER_SEARCH_PATHS:
+        - $(inherited)
+        - $(SRCROOT)/vendor/Onigmo/vendor
+        - $(SRCROOT)/vendor/Onigmo
+        - $(SRCROOT)/vendor/kvdb/vendor
+        - $(DERIVED_FILE_DIR)
+        - $(SRCROOT)/build/xcode/generated
+
+  # ── TextFellow: macOS application (was TextMate) ──
+  TextFellow:
+    type: application
+    platform: macOS
+    sources:
+      - path: Applications/TextMate/src
+      - path: Frameworks/SW3TSyntax/src
+        includes: ["*.swift"]
+        group: SW3TSyntax
+      - path: Frameworks/SW3TCommandPalette/src
+        includes: ["*.swift"]
+        group: SW3TCommandPalette
+      - path: Frameworks/SW3TLSP/src
+        includes: ["*.swift"]
+        group: SW3TLSP
+      - path: Frameworks/SW3TConfig/src
+        includes: ["*.swift"]
+        group: SW3TConfig
+      # App resources
+      - path: Applications/TextMate/resources
+        buildPhase: resources
+      - path: Applications/TextMate/icons
+        includes: ["*.icns"]
+        buildPhase: resources
+      - path: build/xcode/About
+        buildPhase: resources
+        type: folder
+        optional: true
+      # Framework resources (images, plists, nibs, icons)
+      - path: Frameworks/BundleEditor/resources
+        buildPhase: resources
+      - path: Frameworks/BundleEditor/templates
+        buildPhase: resources
+      - path: Frameworks/BundleEditor/gfx
+        buildPhase: resources
+      - path: Frameworks/DocumentWindow/resources
+        buildPhase: resources
+      - path: Frameworks/FileBrowser/resources
+        buildPhase: resources
+      - path: Frameworks/HTMLOutput/resources
+        buildPhase: resources
+      - path: Frameworks/OakAppKit/resources
+        buildPhase: resources
+      - path: Frameworks/OakAppKit/gfx
+        buildPhase: resources
+      - path: Frameworks/OakTabBarView/gfx
+        buildPhase: resources
+      - path: Frameworks/OakTextView/resources
+        buildPhase: resources
+      - path: Frameworks/Preferences/resources
+        buildPhase: resources
+      - path: Frameworks/Preferences/icons
+        buildPhase: resources
+      - path: Frameworks/scm/resources
+        buildPhase: resources
+      - path: Frameworks/SoftwareUpdate/resources
+        buildPhase: resources
+      - path: Frameworks/TMFileReference/resources
+        buildPhase: resources
+    dependencies:
+      - target: TextFellowCore
+      - target: Onigmo
+      - target: kvdb
+      - target: TreeSitter
+      - sdk: AddressBook.framework
+      - sdk: AudioToolbox.framework
+      - sdk: Carbon.framework
+      - sdk: Cocoa.framework
+      - sdk: CoreFoundation.framework
+      - sdk: CoreServices.framework
+      - sdk: ExceptionHandling.framework
+      - sdk: Quartz.framework
+      - sdk: Security.framework
+      - sdk: SystemConfiguration.framework
+      - sdk: UserNotifications.framework
+      - sdk: WebKit.framework
+    info:
+      path: Applications/TextMate/Info.plist
+    entitlements:
+      path: Applications/TextMate/Entitlements.plist
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: org.sw3t.TextFellow
+      PRODUCT_NAME: TextFellow
+      SWIFT_VERSION: "6.0"
+      SWIFT_OBJC_BRIDGING_HEADER: Xcode/TextFellow-Bridging-Header.h
+      SWIFT_OBJC_INTEROP_MODE: objcxx
+      SWIFT_INCLUDE_PATHS:
+        - $(SRCROOT)/Frameworks/SW3TSyntax/src
+      HEADER_SEARCH_PATHS:
+        - $(inherited)
+        - $(SRCROOT)/Shared/include
+        - $(SRCROOT)/vendor/tree-sitter/lib/include
+      OTHER_LDFLAGS:
+        - $(inherited)
+        - -liconv
+        - -lsqlite3
+        - -lz
+    postCompileScripts:
+      - name: Copy SharedSupport
+        script: |
+          SHARED="${BUILT_PRODUCTS_DIR}/${CONTENTS_FOLDER_PATH}/SharedSupport"
+          mkdir -p "${SHARED}"
+          cp -R "${SRCROOT}/Applications/TextMate/support/Bundles" "${SHARED}/"
+        basedOnDependencyAnalysis: false
+
+  # ── fellow: CLI tool (was 'mate') ──
+  fellow:
+    type: tool
+    platform: macOS
+    sources:
+      - path: Applications/mate/src
+    dependencies:
+      - target: TextFellowCore
+    settings:
+      PRODUCT_NAME: fellow
+      HEADER_SEARCH_PATHS:
+        - $(inherited)
+
+        - $(SRCROOT)/Shared/include
+      OTHER_LDFLAGS:
+        - $(inherited)
+        - -liconv
+
+        - -lz
+
+  # ── sw3t-query: CLI tool (was 'tm_query') ──
+  sw3t-query:
+    type: tool
+    platform: macOS
+    sources:
+      - path: Applications/tm_query/src
+    dependencies:
+      - target: TextFellowCore
+    settings:
+      PRODUCT_NAME: sw3t-query
+      HEADER_SEARCH_PATHS:
+        - $(inherited)
+
+        - $(SRCROOT)/Shared/include
+      OTHER_LDFLAGS:
+        - $(inherited)
+        - -liconv
+
+
+  # ── PrivilegedTool: helper for file operations ──
+  PrivilegedTool:
+    type: tool
+    platform: macOS
+    sources:
+      - path: Applications/PrivilegedTool/src
+    dependencies:
+      - target: TextFellowCore
+    settings:
+      PRODUCT_NAME: PrivilegedTool
+      HEADER_SEARCH_PATHS:
+        - $(inherited)
+        - $(SRCROOT)/Shared/include
+      OTHER_LDFLAGS:
+        - $(inherited)
+        - -liconv
+
+  # ── TextFellowTests: Swift Testing ──
+  TextFellowTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Tests/TextFellowTests
+    dependencies:
+      - target: TextFellow
+    settings:
+      SWIFT_VERSION: "6.0"
+      SWIFT_OBJC_INTEROP_MODE: objcxx
+      HEADER_SEARCH_PATHS:
+        - $(inherited)
+        - $(SRCROOT)/vendor/tree-sitter/lib/include
+      PRODUCT_BUNDLE_IDENTIFIER: org.sw3t.TextFellowTests
+      GENERATE_INFOPLIST_FILE: YES

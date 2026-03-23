@@ -28,9 +28,6 @@ namespace network
 
 	private:
 		friend long download (request_t const& request, std::string* error);
-		friend int receive_progress (void* udata, double dltotal, double dlnow, double ultotal, double ulnow);
-		friend size_t receive_header (void* ptr, size_t size, size_t nmemb, void* udata);
-		friend size_t receive_data (void* ptr, size_t size, size_t nmemb, void* udata);
 
 		std::string            _url;
 		std::vector<filter_t*> _filters;

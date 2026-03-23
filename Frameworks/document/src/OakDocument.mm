@@ -121,11 +121,11 @@ namespace document
 				return res;
 
 			plist::any_t const& plist = plist::parse(str);
-			if(plist::array_t const* array = boost::get<plist::array_t>(&plist))
+			if(plist::array_t const* array = std::get_if<plist::array_t>(&plist))
 			{
 				for(auto const& bm : *array)
 				{
-					if(std::string const* str = boost::get<std::string>(&bm))
+					if(std::string const* str = std::get_if<std::string>(&bm))
 						res.emplace(*str, std::string());
 				}
 			}
@@ -551,12 +551,12 @@ static void* kDocumentEditedObserverContext = &kDocumentEditedObserverContext;
 
 	if(_buffer && OakNotEmptyString(_folded))
 	{
-		boost::crc_32_type crc32;
-		_buffer->visit_data([&crc32](char const* bytes, size_t offset, size_t len, bool*){
-			crc32.process_bytes(bytes, len);
+		uLong checksum = ::crc32(0L, Z_NULL, 0);
+		_buffer->visit_data([&checksum](char const* bytes, size_t offset, size_t len, bool*){
+			checksum = ::crc32(checksum, (Bytef const*)bytes, (uInt)len);
 		});
 
-		res["com.macromates.crc32"]  = text::format("%04x", crc32.checksum());
+		res["com.macromates.crc32"]  = text::format("%04x", (uint32_t)checksum);
 		res["com.macromates.folded"] = to_s(_folded);
 	}
 
@@ -1374,7 +1374,7 @@ static void* kDocumentEditedObserverContext = &kDocumentEditedObserverContext;
 	NSMutableArray<OakDocumentMatch*>* results = [NSMutableArray array];
 
 	__block find::find_t f(to_s(searchString), options | (self.isLoaded == NO && (options & find::regular_expression) ? find::filesize_limit : find::none));
-	__block boost::crc_32_type crc32;
+	__block uLong checksum = ::crc32(0L, Z_NULL, 0);
 	__block size_t total = 0;
 
 	[self enumerateByteRangesUsingBlock:^(char const* bytes, NSRange byteRange, BOOL* stop){
@@ -1392,7 +1392,7 @@ static void* kDocumentEditedObserverContext = &kDocumentEditedObserverContext;
 			[results addObject:match];
 		});
 
-		crc32.process_bytes(bytes, byteRange.length);
+		checksum = ::crc32(checksum, (Bytef const*)bytes, (uInt)byteRange.length);
 		total = NSMaxRange(byteRange);
 	}];
 
@@ -1416,9 +1416,8 @@ static void* kDocumentEditedObserverContext = &kDocumentEditedObserverContext;
 	}];
 
 	// Document has changed, should probably re-scan
-	boost::crc_32_type doubleCheck;
-	doubleCheck.process_bytes(text.data(), text.size());
-	if(crc32.checksum() != doubleCheck.checksum())
+	uLong doubleCheck = ::crc32(::crc32(0L, Z_NULL, 0), (Bytef const*)text.data(), (uInt)text.size());
+	if(checksum != doubleCheck)
 		return nil;
 
 	std::string const crlf = text::estimate_line_endings(std::begin(text), std::end(text));
@@ -1460,7 +1459,7 @@ static void* kDocumentEditedObserverContext = &kDocumentEditedObserverContext;
 		ASSERT_LE(match.last, toOffset);
 
 		match.document      = self;
-		match.checksum      = crc32.checksum();
+		match.checksum      = (uint32_t)checksum;
 		match.range         = text::range_t(from, to);
 		match.excerpt       = to_ns(text.substr(fromOffset, toOffset - fromOffset));
 		match.excerptOffset = fromOffset;
@@ -1822,15 +1821,15 @@ static void* kDocumentEditedObserverContext = &kDocumentEditedObserverContext;
 
 	[self createBuffer];
 
-	boost::crc_32_type check;
+	uLong check = ::crc32(0L, Z_NULL, 0);
 	file::reader_t reader(to_s(_path));
 	while(io::bytes_ptr bytes = reader.next())
 	{
-		check.process_bytes(bytes->get(), bytes->size());
+		check = ::crc32(check, (Bytef const*)bytes->get(), (uInt)bytes->size());
 		_buffer->insert(_buffer->size(), bytes->get(), bytes->size());
 	}
 
-	if(crc32 != check.checksum())
+	if(crc32 != (uint32_t)check)
 	{
 		[self deleteBuffer];
 		return NO;

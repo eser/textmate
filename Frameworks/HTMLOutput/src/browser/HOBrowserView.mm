@@ -2,6 +2,7 @@
 #import "HOWebViewDelegateHelper.h"
 #import "HOStatusBar.h"
 #import <OakAppKit/OakUIConstructionFunctions.h>
+#import <WebKit/WebKit.h>
 
 static NSString* EscapeHTML (NSString* str)
 {

@@ -1,3 +1,14 @@
+// Workaround: macOS 15+ Cocoa Scripting framework queries NSApplication
+// for a "properties" key during NIB loading, causing NSUnknownKeyException.
+// This category provides a safe fallback.
+@implementation NSApplication (ScriptingFix)
+- (id)valueForUndefinedKey:(NSString*)key
+{
+	os_log_info(OS_LOG_DEFAULT, "NSApplication valueForUndefinedKey: %{public}@", key);
+	return nil;
+}
+@end
+
 #import "AppController.h"
 #import "OakMainMenu.h"
 #import "Favorites.h"

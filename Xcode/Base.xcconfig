@@ -1,0 +1,62 @@
+// Base.xcconfig — SW³ TextFellow
+// Extracted from default.rave — shared settings for all configurations
+//
+// These settings mirror the Rave build system so both produce identical binaries.
+// When changing flags here, update default.rave to match (and vice versa).
+
+MACOSX_DEPLOYMENT_TARGET = 15.0
+SDKROOT = macosx
+
+// Language standards (from default.rave C_FLAGS / CXX_FLAGS / OBJC_FLAGS / OBJCXX_FLAGS)
+CLANG_CXX_LANGUAGE_STANDARD = c++20
+GCC_C_LANGUAGE_STANDARD = c99
+CLANG_ENABLE_OBJC_ARC = YES
+CLANG_ENABLE_OBJC_WEAK = YES
+
+// Compiler flags matching default.rave FLAGS
+GCC_CHAR_IS_UNSIGNED_CHAR = YES
+WARNING_CFLAGS = -Wall -Wwrite-strings -Wformat -Winit-self -Wmissing-include-dirs -Wno-parentheses -Wno-sign-compare -Wno-switch -Wno-c99-designator
+
+// Preprocessor definitions
+// NOTE: NULL_STR and REST_API are defined in prelude-xcode.h instead of here
+// because xcconfig string-literal quoting is unreliable for -D macros.
+GCC_PREPROCESSOR_DEFINITIONS = $(inherited)
+
+// ObjC++ interop (from OBJCXX_FLAGS)
+OTHER_CPLUSPLUSFLAGS = $(inherited) -fobjc-call-cxx-cdtors -funsigned-char
+OTHER_CFLAGS = $(inherited) -funsigned-char
+
+// Header search paths
+// Xcode/include has framework-style symlinks (OakTextView/OakTextView.h → Frameworks/...)
+// NOTE: Our network/ directory collides with Apple's Network.framework on the
+// case-insensitive macOS filesystem. Resolved by a wrapper header in
+// Xcode/include/network/network.h (see gen-header-symlinks.sh).
+// Homebrew (capnp/kj headers, libcurl headers)
+HOMEBREW_PREFIX = /opt/homebrew
+HEADER_SEARCH_PATHS = $(inherited) $(SRCROOT)/Xcode/include $(SRCROOT)/Shared/include $(HOMEBREW_PREFIX)/include
+LIBRARY_SEARCH_PATHS = $(inherited) $(HOMEBREW_PREFIX)/lib
+
+// Precompiled header
+GCC_PRECOMPILE_PREFIX_HEADER = YES
+GCC_PREFIX_HEADER = $(SRCROOT)/Shared/PCH/prelude-xcode.h
+
+// Linking (from default.rave LN_FLAGS)
+// -ObjC forces loading of all ObjC classes from static libraries,
+// needed because TextFellowCore registers value transformers and
+// categories in +load methods that the linker would otherwise strip.
+OTHER_LDFLAGS = $(inherited) -ObjC -fobjc-link-runtime
+
+// Code signing (ad-hoc by default, matching CS_IDENTITY "-")
+CODE_SIGN_IDENTITY = -
+CODE_SIGN_STYLE = Manual
+
+// Build locations
+SYMROOT = $(SRCROOT)/build/xcode
+OBJROOT = $(SRCROOT)/build/xcode/intermediates
+
+// Suppress warnings in system headers
+ALWAYS_SEARCH_USER_PATHS = NO
+CLANG_WARN_DOCUMENTATION_COMMENTS = NO
+
+// Disable Clang modules — TextMate uses #import/#include, not @import.
+CLANG_ENABLE_MODULES = NO

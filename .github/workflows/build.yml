@@ -1,18 +1,53 @@
-name: CI
+name: Build
 
-on: [push]
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
 
 jobs:
-  build:
-    runs-on: macOS-latest
-
+  rave-build:
+    name: Rave Build (ninja)
+    runs-on: macos-15
     steps:
-    - uses: actions/checkout@v2
-      with:
-        submodules: recursive
-    - name: Setup
-      run: brew install boost capnp google-sparsehash multimarkdown ninja ragel
-    - name: Configure
-      run: ./configure
-    - name: Build
-      run: ninja TextMate
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install dependencies
+        run: brew install multimarkdown ninja ragel
+
+      - name: Configure
+        run: ./configure
+
+      - name: Build
+        run: ninja TextMate
+
+  xcode-build:
+    name: Xcode Build (xcodegen)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install dependencies
+        run: brew install multimarkdown ninja ragel xcodegen
+
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build TextFellow
+        run: |
+          xcodebuild -project TextFellow.xcodeproj \
+            -target TextFellow \
+            -configuration Debug \
+            -arch arm64 \
+            build
+
+      - name: Verify binary
+        run: |
+          file build/xcode/Debug/TextFellow.app/Contents/MacOS/TextFellow
+          ls -lh build/xcode/Debug/TextFellow.app/Contents/MacOS/TextFellow

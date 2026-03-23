@@ -12,7 +12,6 @@
 #import <ServiceManagement/ServiceManagement.h>
 #import <SystemConfiguration/SystemConfiguration.h>
 
-#import <libkern/OSAtomic.h>
 #import <machine/byte_order.h>
 
 #import <os/activity.h>

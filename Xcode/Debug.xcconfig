@@ -1,0 +1,19 @@
+// Debug.xcconfig — SW³ TextFellow
+// Extracted from default.rave config debug { }
+
+#include "Base.xcconfig"
+
+// Optimization (from default.rave: -Os in debug — TextMate optimizes even debug builds)
+GCC_OPTIMIZATION_LEVEL = s
+
+// Address Sanitizer (from default.rave: -fsanitize=address)
+CLANG_ADDRESS_SANITIZER = YES
+OTHER_CFLAGS = $(inherited) -fno-omit-frame-pointer
+OTHER_CPLUSPLUSFLAGS = $(inherited) -fno-omit-frame-pointer
+
+// Debug info
+GCC_GENERATE_DEBUGGING_SYMBOLS = YES
+DEBUG_INFORMATION_FORMAT = dwarf
+
+// Code signing (from default.rave: --timestamp=none)
+OTHER_CODE_SIGN_FLAGS = --timestamp=none

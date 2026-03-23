@@ -1,5 +1,6 @@
 #import "HOAutoScroll.h"
 #import <oak/debug.h>
+#import <WebKit/WebKit.h>
 
 @interface HOAutoScroll ()
 @property (nonatomic) NSRect lastFrame;

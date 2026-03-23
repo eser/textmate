@@ -19,3 +19,6 @@
 [submodule "Applications/SyntaxMate/resources/SyntaxMate.tmBundle"]
 	path = Applications/SyntaxMate/resources/SyntaxMate.tmBundle
 	url = https://github.com/shpakovski/syntaxmate.tmbundle.git
+[submodule "vendor/tree-sitter"]
+	path = vendor/tree-sitter
+	url = https://github.com/tree-sitter/tree-sitter.git

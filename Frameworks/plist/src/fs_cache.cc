@@ -1,7 +1,4 @@
 #include "fs_cache.h"
-#include "cache.capnp.h"
-#include <capnp/message.h>
-#include <capnp/serialize-packed.h>
 #include <io/entries.h>
 #include <text/format.h>
 #include <oak/debug.h>
@@ -25,7 +22,6 @@ static std::string read_link (std::string const& path)
 namespace plist
 {
 	int32_t const cache_t::kPropertyCacheFormatVersion = 2;
-	uint32_t const kCapnpCacheFormatVersion = 2;
 
 	void cache_t::load (std::string const& path)
 	{
@@ -35,134 +31,51 @@ namespace plist
 		{
 			for(auto const& pair : plist)
 			{
-				if(plist::dictionary_t const* node = boost::get<plist::dictionary_t>(&pair.second))
+				if(plist::dictionary_t const* node = std::get_if<plist::dictionary_t>(&pair.second))
 				{
 					entry_t entry(pair.first);
 					for(auto const& pair : *node)
 					{
-						if(pair.first == "content" && boost::get<plist::dictionary_t>(&pair.second))
+						if(pair.first == "content" && std::get_if<plist::dictionary_t>(&pair.second))
 						{
 							entry.set_type(entry_type_t::file);
-							entry.set_content(boost::get<plist::dictionary_t>(pair.second));
+							entry.set_content(std::get<plist::dictionary_t>(pair.second));
 						}
-						else if(pair.first == "link" && boost::get<std::string>(&pair.second))
+						else if(pair.first == "link" && std::get_if<std::string>(&pair.second))
 						{
 							entry.set_type(entry_type_t::link);
-							entry.set_link(boost::get<std::string>(pair.second));
+							entry.set_link(std::get<std::string>(pair.second));
 						}
-						else if(pair.first == "missing" && boost::get<bool>(&pair.second) && boost::get<bool>(pair.second))
+						else if(pair.first == "missing" && std::get_if<bool>(&pair.second) && std::get<bool>(pair.second))
 						{
 							entry.set_type(entry_type_t::missing);
 						}
-						else if(pair.first == "entries" && boost::get<plist::array_t>(&pair.second))
+						else if(pair.first == "entries" && std::get_if<plist::array_t>(&pair.second))
 						{
 							std::vector<std::string> v;
-							for(auto path : boost::get<plist::array_t>(pair.second))
-								v.push_back(boost::get<std::string>(path));
+							for(auto path : std::get<plist::array_t>(pair.second))
+								v.push_back(std::get<std::string>(path));
 
 							entry.set_type(entry_type_t::directory);
 							entry.set_entries(v);
 						}
-						else if(pair.first == "glob" && boost::get<std::string>(&pair.second))
+						else if(pair.first == "glob" && std::get_if<std::string>(&pair.second))
 						{
-							entry.set_glob_string(boost::get<std::string>(pair.second));
+							entry.set_glob_string(std::get<std::string>(pair.second));
 						}
-						else if(pair.first == "modified" && boost::get<oak::date_t>(&pair.second))
+						else if(pair.first == "modified" && std::get_if<oak::date_t>(&pair.second))
 						{
-							entry.set_modified(boost::get<oak::date_t>(pair.second).time_value());
+							entry.set_modified(std::get<oak::date_t>(pair.second).time_value());
 						}
-						else if(pair.first == "eventId" && boost::get<uint64_t>(&pair.second))
+						else if(pair.first == "eventId" && std::get_if<uint64_t>(&pair.second))
 						{
-							entry.set_event_id(boost::get<uint64_t>(pair.second));
+							entry.set_event_id(std::get<uint64_t>(pair.second));
 						}
 					}
 
 					if(entry.type() != entry_type_t::unknown)
 						_cache.emplace(pair.first, entry);
 				}
-			}
-		}
-	}
-
-	void cache_t::load_capnp (std::string const& path)
-	{
-		try {
-			real_load(path);
-		}
-		catch(std::exception const& e) {
-			os_log_error(OS_LOG_DEFAULT, "Exception thrown while loading ‘%{public}s’: %{public}s", path.c_str(), e.what());
-		}
-	}
-
-	void cache_t::real_load (std::string const& path)
-	{
-		int fd = open(path.c_str(), O_RDONLY|O_CLOEXEC);
-		if(fd != -1)
-		{
-			capnp::PackedFdMessageReader message(kj::AutoCloseFd{fd});
-			auto cache = message.getRoot<Cache>();
-			if(cache.getVersion() != kCapnpCacheFormatVersion)
-			{
-				os_log_error(OS_LOG_DEFAULT, "Skip ‘%{public}s’ version %u (expected %u)", path.c_str(), cache.getVersion(), kCapnpCacheFormatVersion);
-				return;
-			}
-
-			for(auto src : cache.getEntries())
-			{
-				entry_t entry(src.getPath());
-				switch(src.getType().which())
-				{
-					case Entry::Type::Which::FILE:
-					{
-						entry.set_type(entry_type_t::file);
-						entry.set_modified(src.getType().getFile().getModified());
-
-						plist::dictionary_t plist;
-						for(auto pair : src.getType().getFile().getContent())
-						{
-							if(pair.hasValue())
-							{
-								plist.emplace(pair.getKey(), std::string(pair.getValue()));
-							}
-							else
-							{
-								auto array = pair.getPlist();
-								plist.emplace(pair.getKey(), plist::parse(std::string(array.begin(), array.end())));
-							}
-						}
-						entry.set_content(plist);
-					}
-					break;
-
-					case Entry::Type::Which::DIRECTORY:
-					{
-						entry.set_type(entry_type_t::directory);
-						entry.set_event_id(src.getType().getDirectory().getEventId());
-						entry.set_glob_string(src.getType().getDirectory().getGlob());
-
-						std::vector<std::string> v;
-						for(auto path : src.getType().getDirectory().getItems())
-							v.push_back(path);
-						entry.set_entries(v);
-					}
-					break;
-
-					case Entry::Type::Which::LINK:
-					{
-						entry.set_type(entry_type_t::link);
-						entry.set_link(src.getType().getLink());
-					}
-					break;
-
-					case Entry::Type::Which::MISSING:
-					{
-						entry.set_type(entry_type_t::missing);
-					}
-					break;
-				}
-
-				if(entry.type() != entry_type_t::unknown)
-					_cache.emplace(src.getPath(), entry);
 			}
 		}
 	}
@@ -199,78 +112,6 @@ namespace plist
 		}
 		plist["version"] = kPropertyCacheFormatVersion;
 		plist::save(path, plist);
-	}
-
-	void cache_t::save_capnp (std::string const& path) const
-	{
-		capnp::MallocMessageBuilder message;
-		auto cache = message.initRoot<Cache>();
-		cache.setVersion(kCapnpCacheFormatVersion);
-		auto entries = cache.initEntries(_cache.size());
-
-		size_t i = 0;
-		for(auto pair : _cache)
-		{
-			auto entry = entries[i++];
-			entry.setPath(pair.first);
-
-			if(pair.second.is_file())
-			{
-				auto file = entry.getType().initFile();
-				file.setModified(pair.second.modified());
-
-				auto const& plist = pair.second.content();
-				auto content = file.initContent(plist.size());
-				size_t j = 0;
-				for(auto src : plist)
-				{
-					auto dst = content[j++];
-					dst.setKey(src.first);
-					if(std::string const* str = boost::get<std::string>(&src.second))
-					{
-						dst.setValue(str->c_str());
-					}
-					else
-					{
-						if(CFPropertyListRef cfPlist = plist::create_cf_property_list(src.second))
-						{
-							if(CFDataRef data = CFPropertyListCreateData(kCFAllocatorDefault, cfPlist, kCFPropertyListBinaryFormat_v1_0, 0, nullptr))
-							{
-								dst.setPlist(capnp::Data::Reader(CFDataGetBytePtr(data), CFDataGetLength(data)));
-								CFRelease(data);
-							}
-							CFRelease(cfPlist);
-						}
-					}
-				}
-			}
-			else if(pair.second.is_directory())
-			{
-				auto dir = entry.getType().initDirectory();
-				dir.setGlob(pair.second.glob_string());
-				dir.setEventId(pair.second.event_id());
-
-				auto const& v = pair.second.entries();
-				auto items = dir.initItems(v.size());
-				for(size_t j = 0; j < v.size(); ++j)
-					items.set(j, v[j]);
-			}
-			else if(pair.second.is_link())
-			{
-				entry.getType().setLink(pair.second.link());
-			}
-			else if(pair.second.is_missing())
-			{
-				entry.getType().setMissing();
-			}
-		}
-
-		int fd = open(path.c_str(), O_CREAT|O_TRUNC|O_WRONLY|O_CLOEXEC, S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP|S_IROTH);
-		if(fd != -1)
-		{
-			writePackedMessageToFd(fd, message);
-			close(fd);
-		}
 	}
 
 	uint64_t cache_t::event_id_for_path (std::string const& path) const

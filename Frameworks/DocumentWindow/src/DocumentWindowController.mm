@@ -35,6 +35,7 @@
 #import <ns/ns.h>
 #import <kvdb/kvdb.h>
 #import <crash/info.h>
+#import <WebKit/WebKit.h>
 
 static NSString* const kUserDefaultsAlwaysFindInDocument = @"alwaysFindInDocument";
 static NSString* const kUserDefaultsDisableFolderStateRestore = @"disableFolderStateRestore";

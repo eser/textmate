@@ -1,5 +1,5 @@
 target "${dirname}" {
 	headers src/encoding.h
-	sources src/*.{mm,capnp}
-	libraries capnp kj
+	require plist
+	sources src/*.mm
 }

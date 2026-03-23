@@ -1,0 +1,4 @@
+module CTreeSitter [system] {
+    header "TreeSitterBridge.h"
+    export *
+}

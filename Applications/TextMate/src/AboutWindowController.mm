@@ -5,6 +5,7 @@
 #import <BundlesManager/BundlesManager.h>
 #import <license/LicenseManager.h>
 #import <ns/ns.h>
+#import <WebKit/WebKit.h>
 
 static NSString* const kUserDefaultsReleaseNotesDigestKey = @"releaseNotesDigest";
 

@@ -1,3 +1,21 @@
+# Rave/Ninja build artifacts
 build.ninja
 local.rave
 Frameworks/license/src/revoked_serials.cc
+
+# Xcode
+TextFellow.xcodeproj/
+Xcode/include/
+Xcode/framework-deps.txt
+Xcode/source-catalog.txt
+*.xcuserdata/
+DerivedData/
+build/
+
+# Swift Package Manager
+.build/
+Package.resolved
+*.swiftpm.lock
+
+# macOS
+.DS_Store

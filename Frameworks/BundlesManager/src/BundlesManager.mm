@@ -330,7 +330,7 @@ static NSString* SafeBasename (NSString* name)
 	cache.cleanup(bundlesPaths);
 	if(cache.dirty())
 	{
-		cache.save_capnp(bundlesIndexPath);
+		cache.save(bundlesIndexPath);
 		cache.set_dirty(false);
 	}
 	_needsSaveBundlesIndex = NO;
@@ -430,7 +430,7 @@ namespace
 
 			if(pair.first == bundles::kFieldSettingName)
 			{
-				if(plist::dictionary_t const* dictionary = boost::get<plist::dictionary_t>(&pair.second))
+				if(plist::dictionary_t const* dictionary = std::get_if<plist::dictionary_t>(&pair.second))
 				{
 					plist::array_t settings;
 					for(auto const& settingsPair : *dictionary)
@@ -440,7 +440,7 @@ namespace
 			}
 			else if(pair.first == kFieldChangedItems)
 			{
-				if(plist::dictionary_t const* dictionary = boost::get<plist::dictionary_t>(&pair.second))
+				if(plist::dictionary_t const* dictionary = std::get_if<plist::dictionary_t>(&pair.second))
 					res.emplace(pair.first, prune_dictionary(*dictionary));
 			}
 			else
@@ -525,12 +525,12 @@ namespace
 	if(access(oldPath.c_str(), R_OK) == 0)
 	{
 		cache.load(oldPath);
-		cache.save_capnp(bundlesIndexPath);
+		cache.save(bundlesIndexPath);
 		unlink(oldPath.c_str());
 	}
 	else
 	{
-		cache.load_capnp(bundlesIndexPath);
+		cache.load(bundlesIndexPath);
 	}
 
 	_needsCreateBundlesIndex = YES;

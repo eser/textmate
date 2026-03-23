@@ -8,7 +8,6 @@
 #import <assert.h>
 #import <copyfile.h>
 #import <ctype.h>
-#import <curl/curl.h>
 #import <dirent.h>
 #import <errno.h>
 #import <execinfo.h> // stack trace for debug

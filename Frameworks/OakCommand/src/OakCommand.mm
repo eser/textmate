@@ -19,6 +19,7 @@
 #import <OakSystem/process.h>
 #import <settings/settings.h>
 #import <BundleEditor/BundleEditor.h>
+#import <WebKit/WebKit.h>
 
 NSNotificationName const OakCommandDidTerminateNotification = @"OakCommandDidTerminateNotification";
 NSString* const OakCommandErrorDomain                       = @"com.macromates.TextMate.ErrorDomain";

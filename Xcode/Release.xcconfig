@@ -1,0 +1,20 @@
+// Release.xcconfig — SW³ TextFellow
+// Extracted from default.rave config release { }
+
+#include "Base.xcconfig"
+
+// Optimization (from default.rave: -Os -DNDEBUG -flto=thin)
+GCC_OPTIMIZATION_LEVEL = s
+GCC_PREPROCESSOR_DEFINITIONS = $(inherited) NDEBUG=1
+LLVM_LTO = YES_THIN
+
+// Dead-stripping (from default.rave: -Wl,-dead_strip -Wl,-dead_strip_dylibs)
+DEAD_CODE_STRIPPING = YES
+OTHER_LDFLAGS = $(inherited) -Wl,-dead_strip_dylibs
+
+// Debug info
+GCC_GENERATE_DEBUGGING_SYMBOLS = YES
+DEBUG_INFORMATION_FORMAT = dwarf-with-dsym
+
+// Code signing (from default.rave: --timestamp)
+OTHER_CODE_SIGN_FLAGS = --timestamp

@@ -5,6 +5,7 @@
 #import <document/OakDocument.h>
 #import <document/OakDocumentController.h>
 #import <ns/ns.h>
+#import <WebKit/WebKit.h>
 
 @interface WebView (OakFindNextPrevious)
 - (void)performFindOperation:(id <OakFindServerProtocol>)aFindServer;

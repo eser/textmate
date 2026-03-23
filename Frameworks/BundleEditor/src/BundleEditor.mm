@@ -112,7 +112,7 @@ static plist::array_t unwrap_array (NSArray* array, NSString* key)
 
 namespace
 {
-	struct expand_visitor_t : boost::static_visitor<void>
+	struct expand_visitor_t
 	{
 		expand_visitor_t (std::map<std::string, std::string> const& variables) : _variables(variables) { }
 
@@ -122,8 +122,8 @@ namespace
 		void operator() (oak::date_t const& value) const       { }
 		void operator() (std::vector<char> const& value) const { }
 		void operator() (std::string& str) const               { str = format_string::expand(str, _variables); }
-		void operator() (plist::array_t& array) const          { for(auto& item : array) boost::apply_visitor(*this, item); }
-		void operator() (plist::dictionary_t& dict) const      { for(auto& pair : dict)  boost::apply_visitor(*this, pair.second); }
+		void operator() (plist::array_t& array) const          { for(auto& item : array) std::visit(*this, item); }
+		void operator() (plist::dictionary_t& dict) const      { for(auto& pair : dict)  std::visit(*this, pair.second); }
 
 	private:
 		std::map<std::string, std::string> const& _variables;
@@ -146,25 +146,27 @@ static be::entry_ptr parent_for_column (NSBrowser* aBrowser, NSInteger aColumn, 
 }
 
 @implementation BundleEditor
++ (void)load
+{
+	// Register value transformers before any NIB loading (macOS 15+ loads
+	// CommandProperties.xib bindings during launch which reference these).
+	static struct { NSString* name; NSArray* array; } const converters[] =
+	{
+		{ @"OakSaveStringListTransformer",                  @[ @"nop", @"saveActiveFile", @"saveModifiedFiles" ] },
+		{ @"OakInputStringListTransformer",                 @[ @"selection", @"document", @"scope", @"line", @"word", @"character", @"none" ] },
+		{ @"OakInputFormatStringListTransformer",           @[ @"text", @"xml" ] },
+		{ @"OakOutputLocationStringListTransformer",        @[ @"replaceInput", @"replaceDocument", @"atCaret", @"afterInput", @"newWindow", @"toolTip", @"discard", @"replaceSelection" ] },
+		{ @"OakOutputFormatStringListTransformer",          @[ @"text", @"snippet", @"html", @"completionList" ] },
+		{ @"OakOutputCaretStringListTransformer",           @[ @"afterOutput", @"selectOutput", @"interpolateByChar", @"interpolateByLine", @"heuristic" ] },
+	};
+
+	[OakRot13Transformer register];
+	for(auto const& converter : converters)
+		[OakStringListTransformer createTransformerWithName:converter.name andObjectsArray:converter.array];
+}
+
 + (instancetype)sharedInstance
 {
-	static dispatch_once_t onceToken;
-	dispatch_once(&onceToken, ^{
-		static struct { NSString* name; NSArray* array; } const converters[] =
-		{
-			{ @"OakSaveStringListTransformer",                  @[ @"nop", @"saveActiveFile", @"saveModifiedFiles" ] },
-			{ @"OakInputStringListTransformer",                 @[ @"selection", @"document", @"scope", @"line", @"word", @"character", @"none" ] },
-			{ @"OakInputFormatStringListTransformer",           @[ @"text", @"xml" ] },
-			{ @"OakOutputLocationStringListTransformer",        @[ @"replaceInput", @"replaceDocument", @"atCaret", @"afterInput", @"newWindow", @"toolTip", @"discard", @"replaceSelection" ] },
-			{ @"OakOutputFormatStringListTransformer",          @[ @"text", @"snippet", @"html", @"completionList" ] },
-			{ @"OakOutputCaretStringListTransformer",           @[ @"afterOutput", @"selectOutput", @"interpolateByChar", @"interpolateByLine", @"heuristic" ] },
-		};
-
-		[OakRot13Transformer register];
-		for(auto const& converter : converters)
-			[OakStringListTransformer createTransformerWithName:converter.name andObjectsArray:converter.array];
-	});
-
 	static BundleEditor* sharedInstance = [self new];
 	return sharedInstance;
 }
@@ -525,7 +527,7 @@ static be::entry_ptr parent_for_column (NSBrowser* aBrowser, NSInteger aColumn, 
 
 	if(info.plist_key == NULL_STR)
 	{
-		if(plist::dictionary_t const* plistSubset = boost::get<plist::dictionary_t>(&parsedContent))
+		if(plist::dictionary_t const* plistSubset = std::get_if<plist::dictionary_t>(&parsedContent))
 		{
 			std::vector<std::string> keys;
 			if(info.kind == bundles::kItemTypeGrammar)

@@ -6,6 +6,7 @@
 #import <OakFoundation/NSString Additions.h>
 #import <OakAppKit/NSAlert Additions.h>
 #import <oak/debug.h>
+#import <WebKit/WebKit.h>
 
 @interface HOStatusBar (BusyAndProgressProperties) <HOJSBridgeDelegate>
 @end

@@ -1,9 +1,7 @@
 #include "encoding.h"
-#include "frequencies.capnp.h"
-#include <capnp/message.h>
-#include <capnp/serialize-packed.h>
+#include <plist/plist.h>
 
-static uint32_t const kCapnpClassifierFormatVersion = 1;
+static int32_t const kClassifierFormatVersion = 3;
 
 namespace encoding
 {
@@ -163,84 +161,88 @@ namespace encoding
 
 	void classifier_t::real_load (std::string const& path)
 	{
-		int fd = open(path.c_str(), O_RDONLY|O_CLOEXEC);
-		if(fd != -1)
-		{
-			capnp::PackedFdMessageReader message(kj::AutoCloseFd{fd});
-			auto freq = message.getRoot<Frequencies>();
-			if(freq.getVersion() != kCapnpClassifierFormatVersion)
-			{
-				os_log_info(OS_LOG_DEFAULT, "Skip ‘%{public}s’ version %u (expected %u)", path.c_str(), freq.getVersion(), kCapnpClassifierFormatVersion);
-				return;
-			}
+		auto root = plist::load(path);
+		int32_t version;
+		if(!plist::get_key_path(root, "version", version) || version != kClassifierFormatVersion)
+			return;
 
-			for(auto src : freq.getCharsets())
+		auto charsetsIt = root.find("charsets");
+		if(charsetsIt == root.end())
+			return;
+		plist::dictionary_t const* charsets = std::get_if<plist::dictionary_t>(&charsetsIt->second);
+		if(!charsets)
+			return;
+
+		for(auto const& pair : *charsets)
+		{
+			if(plist::dictionary_t const* charset = std::get_if<plist::dictionary_t>(&pair.second))
 			{
 				record_t r;
-				for(auto word : src.getWords())
-					r.words.emplace(word.getType().getWord(), word.getCount());
-				for(auto byte : src.getBytes())
-					r.bytes.emplace(byte.getType().getByte(), byte.getCount());
-				_charsets.emplace(src.getCharset(), r);
+				auto wordsIt = charset->find("words");
+				if(wordsIt != charset->end())
+				{
+					if(plist::dictionary_t const* words = std::get_if<plist::dictionary_t>(&wordsIt->second))
+					{
+						for(auto const& w : *words)
+							if(uint64_t const* count = std::get_if<uint64_t>(&w.second))
+								r.words.emplace(w.first, *count);
+					}
+				}
+				auto bytesIt = charset->find("bytes");
+				if(bytesIt != charset->end())
+				{
+					if(plist::dictionary_t const* bytes = std::get_if<plist::dictionary_t>(&bytesIt->second))
+					{
+						for(auto const& b : *bytes)
+							if(uint64_t const* count = std::get_if<uint64_t>(&b.second))
+								r.bytes.emplace(std::stoul(b.first), *count);
+					}
+				}
+				_charsets.emplace(pair.first, r);
+			}
+		}
+
+		for(auto& pair : _charsets)
+		{
+			for(auto const& word : pair.second.words)
+			{
+				_combined.words[word.first] += word.second;
+				_combined.total_words += word.second;
+				pair.second.total_words += word.second;
 			}
 
-			for(auto& pair : _charsets)
+			for(auto const& byte : pair.second.bytes)
 			{
-				for(auto const& word : pair.second.words)
-				{
-					_combined.words[word.first] += word.second;
-					_combined.total_words += word.second;
-					pair.second.total_words += word.second;
-				}
-
-				for(auto const& byte : pair.second.bytes)
-				{
-					_combined.bytes[byte.first] += byte.second;
-					_combined.total_bytes += byte.second;
-					pair.second.total_bytes += byte.second;
-				}
+				_combined.bytes[byte.first] += byte.second;
+				_combined.total_bytes += byte.second;
+				pair.second.total_bytes += byte.second;
 			}
 		}
 	}
 
 	void classifier_t::save (std::string const& path) const
 	{
-		capnp::MallocMessageBuilder message;
-		auto freq = message.initRoot<Frequencies>();
-		freq.setVersion(kCapnpClassifierFormatVersion);
-		auto charsets = freq.initCharsets(_charsets.size());
-		size_t i = 0;
-
+		plist::dictionary_t charsets;
 		for(auto const& pair : _charsets)
 		{
-			auto entry = charsets[i++];
-			entry.setCharset(pair.first);
+			plist::dictionary_t words;
+			for(auto const& w : pair.second.words)
+				words.emplace(w.first, (uint64_t)w.second);
 
-			auto words = entry.initWords(pair.second.words.size());
-			size_t j = 0;
-			for(auto const& word : pair.second.words)
-			{
-				auto tmp = words[j++];
-				tmp.getType().setWord(word.first);
-				tmp.setCount(word.second);
-			}
+			plist::dictionary_t bytes;
+			for(auto const& b : pair.second.bytes)
+				bytes.emplace(std::to_string(b.first), (uint64_t)b.second);
 
-			auto bytes = entry.initBytes(pair.second.bytes.size());
-			j = 0;
-			for(auto const& byte : pair.second.bytes)
-			{
-				auto tmp = bytes[j++];
-				tmp.getType().setByte(byte.first);
-				tmp.setCount(byte.second);
-			}
+			plist::dictionary_t charset;
+			charset["words"] = words;
+			charset["bytes"] = bytes;
+			charsets.emplace(pair.first, charset);
 		}
 
-		int fd = open(path.c_str(), O_CREAT|O_TRUNC|O_WRONLY|O_CLOEXEC, S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP|S_IROTH);
-		if(fd != -1)
-		{
-			writePackedMessageToFd(fd, message);
-			close(fd);
-		}
+		plist::dictionary_t root;
+		root["version"] = (int32_t)kClassifierFormatVersion;
+		root["charsets"] = charsets;
+		plist::save(path, root);
 	}
 
 } /* encoding */

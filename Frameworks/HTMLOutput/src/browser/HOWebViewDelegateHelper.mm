@@ -4,6 +4,7 @@
 #import <OakFoundation/NSString Additions.h>
 #import <io/path.h>
 #import <oak/debug.h>
+#import <WebKit/WebKit.h>
 
 static NSString* const kUserDefaultsDefaultURLProtocolKey = @"defaultURLProtocol";
 
