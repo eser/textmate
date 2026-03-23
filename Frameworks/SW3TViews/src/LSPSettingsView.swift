@@ -28,11 +28,11 @@ struct LSPServerConfig: Identifiable, Codable, Hashable {
 /// SwiftUI view for managing LSP server configurations.
 /// Intended to be hosted in an NSHostingController within the existing
 /// Preferences window, as an additional tab.
-struct LSPSettingsView: View {
+public struct LSPSettingsView: View {
     @State private var servers: [LSPServerConfig] = Self.defaultServers
     @State private var selectedServer: LSPServerConfig.ID?
 
-    var body: some View {
+    public var body: some View {
         HSplitView {
             // Server list
             List(selection: $selectedServer) {

@@ -1218,6 +1218,23 @@ doScroll:
 	};
 
 	documentView->draw(ng::context_t(context, _showInvisibles ? documentView->invisibles_map : NULL_STR, [spellingDotImage CGImageForProposedRect:NULL context:[NSGraphicsContext currentContext] hints:nil], foldingDotsFactory), aRect, [self isFlipped], merge(documentView->ranges(), [self markedRanges]), _liveSearchRanges);
+
+#if __has_include("TextFellow-Swift.h")
+	// Attach Metal overlay on first draw if enabled via defaults
+	static dispatch_once_t metalOnce;
+	dispatch_once(&metalOnce, ^{
+		if([NSUserDefaults.standardUserDefaults boolForKey:@"metalOverlay"])
+		{
+			Class overlayClass = NSClassFromString(@"SW3TMetalOverlayView");
+			if(overlayClass)
+			{
+				id overlay = [[overlayClass alloc] performSelector:NSSelectorFromString(@"initWithParentView:") withObject:self];
+				if(overlay)
+					os_log_info(OS_LOG_DEFAULT, "Metal overlay attached to OakTextView");
+			}
+		}
+	});
+#endif
 }
 
 // =====================

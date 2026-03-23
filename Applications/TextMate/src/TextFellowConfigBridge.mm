@@ -5,6 +5,7 @@
 
 #if __has_include("TextFellow-Swift.h")
 
+#import <MetalKit/MetalKit.h>
 #import "TextFellow-Swift.h"
 #import <settings/settings.h>
 

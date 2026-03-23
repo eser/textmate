@@ -16,6 +16,7 @@
 #import "TMPlugInController.h"
 #import "RMateServer.h"
 #if __has_include("TextFellow-Swift.h")
+#import <MetalKit/MetalKit.h>
 #import "TextFellow-Swift.h"
 @class TextFellowConfigBridge;
 @interface TextFellowConfigBridge : NSObject
@@ -641,6 +642,16 @@ BOOL HasDocumentWindow (NSArray* windows)
 	[[SW3TAppInfo shared] bootstrap];
 	[TextFellowConfigBridge applyConfigToSettings];
 	[self registerCommandPaletteItems];
+
+	// Add LSP Settings pane to Preferences window (dynamic to avoid C++ interop issue)
+	Class lspPaneClass = NSClassFromString(@"SW3TLSPPreferencesPane");
+	if(lspPaneClass)
+	{
+		NSViewController* lspPane = [[lspPaneClass alloc] init];
+		NSWindowController* prefs = Preferences.sharedInstance;
+		if(prefs.window.contentViewController)
+			[prefs.window.contentViewController addChildViewController:lspPane];
+	}
 #endif
 }
 

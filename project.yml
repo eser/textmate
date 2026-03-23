@@ -14,6 +14,13 @@ options:
   createIntermediateGroups: true
   groupSortPosition: top
 
+# packages:
+#   swift-collections:
+#     url: https://github.com/apple/swift-collections.git
+#     from: "1.1.0"
+# NOTE: Uncomment when BigString is needed. Currently using StringTextStorage.
+# Requires removing custom SYMROOT/OBJROOT from Base.xcconfig.
+
 configs:
   Debug: debug
   Release: release
@@ -485,6 +492,12 @@ targets:
       - path: Frameworks/SW3TExtensionHost/src
         includes: ["*.swift"]
         group: SW3TExtensionHost
+      - path: Frameworks/SW3TTextEngine/src
+        includes: ["*.swift"]
+        group: SW3TTextEngine
+      - path: Frameworks/SW3TRenderer/src
+        includes: ["*.swift"]
+        group: SW3TRenderer
       - path: Frameworks/SW3TViews/src
         includes: ["*.swift"]
         group: SW3TViews
@@ -557,6 +570,8 @@ targets:
       - sdk: SystemConfiguration.framework
       - sdk: UserNotifications.framework
       - sdk: WebKit.framework
+      - sdk: Metal.framework
+      - sdk: MetalKit.framework
     info:
       path: Applications/TextMate/Info.plist
       properties:
@@ -576,11 +591,14 @@ targets:
         - $(inherited)
         - $(SRCROOT)/Shared/include
         - $(SRCROOT)/vendor/tree-sitter/lib/include
+        - $(SRCROOT)/vendor/wamr/core/iwasm/include
       OTHER_LDFLAGS:
         - $(inherited)
         - -liconv
         - -lsqlite3
         - -lz
+        - -L$(SRCROOT)/build/wamr
+        - -liwasm
     postCompileScripts:
       - name: Copy SharedSupport
         script: |

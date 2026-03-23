@@ -181,7 +181,7 @@ public struct CommandItem: Sendable {
 
     private func setupSearchField() {
         searchField.translatesAutoresizingMaskIntoConstraints = false
-        searchField.placeholderString = "Type a command..."
+        searchField.placeholderString = "Type to search files, > commands, @ symbols, : line"
         searchField.font = NSFont.systemFont(ofSize: 13)
         searchField.focusRingType = .none
         searchField.delegate = self
@@ -231,6 +231,35 @@ public struct CommandItem: Sendable {
         ])
     }
 
+    // MARK: - Prefix Modes
+    //
+    // (none) = files (delegates to Go To File)
+    // >      = commands (filters registered items)
+    // @      = symbols (delegates to Symbol Chooser)
+    // :      = go to line number
+    // #      = workspace symbols (future)
+
+    private enum PaletteMode {
+        case files
+        case commands
+        case symbols
+        case goToLine
+    }
+
+    private var currentMode: PaletteMode = .commands
+
+    private func detectMode(from query: String) -> (PaletteMode, String) {
+        if query.hasPrefix(">") {
+            return (.commands, String(query.dropFirst()).trimmingCharacters(in: .whitespaces))
+        } else if query.hasPrefix("@") {
+            return (.symbols, String(query.dropFirst()).trimmingCharacters(in: .whitespaces))
+        } else if query.hasPrefix(":") {
+            return (.goToLine, String(query.dropFirst()).trimmingCharacters(in: .whitespaces))
+        } else {
+            return (.files, query)
+        }
+    }
+
     // MARK: - Filtering
 
     private func fuzzyMatch(_ query: String, in text: String) -> Bool {
@@ -248,18 +277,48 @@ public struct CommandItem: Sendable {
     }
 
     private func applyFilter(_ query: String) {
-        filteredItems = query.isEmpty ? allItems : allItems.filter {
-            fuzzyMatch(query, in: $0.title) || fuzzyMatch(query, in: $0.category)
-        }
-        tableView.reloadData()
-        if !filteredItems.isEmpty {
+        let (mode, stripped) = detectMode(from: query)
+        currentMode = mode
+
+        switch mode {
+        case .commands:
+            filteredItems = stripped.isEmpty ? allItems : allItems.filter {
+                fuzzyMatch(stripped, in: $0.title) || fuzzyMatch(stripped, in: $0.category)
+            }
+            tableView.reloadData()
+            if !filteredItems.isEmpty {
+                tableView.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
+            }
+
+        case .files:
+            // Show hint row, delegate to Go To File on execute
+            filteredItems = [CommandItem(
+                id: "_hint_files", title: "Search files: \(stripped)", category: "Go To File",
+                shortcut: "⌘T", action: { NSApp.sendAction(Selector("goToFile:"), to: nil, from: nil) }
+            )]
+            tableView.reloadData()
+            tableView.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
+
+        case .symbols:
+            filteredItems = [CommandItem(
+                id: "_hint_symbols", title: "Search symbols: \(stripped)", category: "Jump to Symbol",
+                shortcut: "⇧⌘T", action: { NSApp.sendAction(Selector("showSymbolChooser:"), to: nil, from: nil) }
+            )]
+            tableView.reloadData()
+            tableView.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
+
+        case .goToLine:
+            filteredItems = [CommandItem(
+                id: "_hint_line", title: "Go to line \(stripped)", category: "Navigate",
+                shortcut: "⌘L", action: { NSApp.sendAction(Selector("orderFrontGoToLinePanel:"), to: nil, from: nil) }
+            )]
+            tableView.reloadData()
             tableView.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
         }
     }
 
     // MARK: - Actions
 
-    @objc private func searchFieldAction(_ sender: Any?) { executeSelectedItem() }
     @objc private func tableClick(_ sender: Any?) { executeSelectedItem() }
     @objc private func tableDoubleClick(_ sender: Any?) { executeSelectedItem() }
 

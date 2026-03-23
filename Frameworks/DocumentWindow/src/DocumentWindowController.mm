@@ -203,6 +203,7 @@ static NSArray* const kObservedKeyPaths = @[ @"arrayController.arrangedObjects.p
 		self.window.collectionBehavior = NSWindowCollectionBehaviorFullScreenPrimary;
 		self.window.delegate           = self;
 		self.window.releasedWhenClosed = NO;
+		self.window.titlebarSeparatorStyle = NSTitlebarSeparatorStyleNone;
 
 		_titlebarViewController = [[NSTitlebarAccessoryViewController alloc] init];
 		self.tabBarView.frameSize = self.tabBarView.intrinsicContentSize;

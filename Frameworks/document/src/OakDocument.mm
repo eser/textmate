@@ -883,6 +883,13 @@ static void* kDocumentEditedObserverContext = &kDocumentEditedObserverContext;
 	[self snapshot];
 	[self updateRecentDocumentMenu];
 	self.observeFileSystem = YES;
+
+	// Notify Swift subsystems (LSP, EditorConfig, tree-sitter) that a document opened
+	if(_path)
+	{
+		[NSNotificationCenter.defaultCenter postNotificationName:@"OakDocumentDidOpenNotification"
+			object:self userInfo:@{ @"path": _path }];
+	}
 }
 
 // =================

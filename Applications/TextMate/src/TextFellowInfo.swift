@@ -38,6 +38,11 @@ final class AppInfo: NSObject, @unchecked Sendable {
 
     /// Initialize subsystems on first access.
     @objc func bootstrap() {
+        // Register defaults for TextFellow features
+        UserDefaults.standard.register(defaults: [
+            "metalOverlay": true,
+        ])
+
         // Load user config (~/.config/sw3t/settings.toml)
         LayeredConfig.shared.loadUserSettings()
 
@@ -47,8 +52,29 @@ final class AppInfo: NSObject, @unchecked Sendable {
         // Initialize LSP coordinator (listens for document open events)
         _ = LSPCoordinator.shared
 
+        // Watch for document opens to apply EditorConfig
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(documentDidOpen(_:)),
+            name: NSNotification.Name("OakDocumentDidOpenNotification"),
+            object: nil
+        )
+
         os_log(.info, "TextFellow bootstrapped: %{public}@ grammars, %{public}d LSP servers registered",
                GrammarRegistry.shared.availableLanguages.joined(separator: ", "),
                LSPCoordinator.shared.registeredServerCount)
+    }
+
+    @objc private func documentDidOpen(_ notification: Notification) {
+        guard let path = notification.userInfo?["path"] as? String else { return }
+
+        // Apply .editorconfig for this file
+        EditorConfig.applyToConfig(LayeredConfig.shared, forFile: path)
+
+        // Apply tree-sitter grammar availability info
+        let ext = (path as NSString).pathExtension
+        if GrammarRegistry.shared.hasGrammar(forExtension: ext) {
+            os_log(.debug, "tree-sitter grammar available for .%{public}@", ext)
+        }
     }
 }
