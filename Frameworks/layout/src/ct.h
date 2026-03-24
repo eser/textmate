@@ -15,9 +15,17 @@ namespace ng
 	struct metal_line_cmd_t
 	{
 		CGPoint pos;
-		CTLineRef line; // borrowed, valid only during draw cycle
+		CTLineRef line; // retained, released by context_t destructor
 		bool isFlipped;
 		CGFloat height;
+	};
+
+	struct metal_image_cmd_t
+	{
+		CGRect rect;
+		CGImageRef image;     // retained, released by context_t destructor
+		CGFloat r, g, b, a;   // tint color (used when isMask=true)
+		bool isMask;          // true = image is alpha mask, tint with color
 	};
 
 	struct context_t
@@ -36,10 +44,13 @@ namespace ng
 		// Unified draw operations — route to CoreText or Metal collector
 		void fill_rect (CGColorRef color, CGRect const& rect) const;
 		void draw_line (CTLineRef line, CGPoint pos, bool isFlipped, CGFloat height) const;
+		void draw_image (CGImageRef image, CGRect const& rect, bool isFlipped) const;
+		void draw_image_masked (CGImageRef mask, CGRect const& rect, CGColorRef color) const;
 
 		// Metal command buffers (populated during draw, consumed by OakTextView)
 		mutable std::vector<metal_rect_cmd_t> metal_rects;
 		mutable std::vector<metal_line_cmd_t> metal_lines;
+		mutable std::vector<metal_image_cmd_t> metal_images;
 
 		std::string const& space () const   { return _space; }
 		std::string const& tab () const     { return _tab; }

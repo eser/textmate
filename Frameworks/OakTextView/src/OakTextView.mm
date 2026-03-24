@@ -1251,7 +1251,8 @@ doScroll:
 
 		ng::context_t metalContext(dummyCtx,
 			_showInvisibles ? documentView->invisibles_map : NULL_STR,
-			nil, foldingDotsFactory);
+			[spellingDotImage CGImageForProposedRect:NULL context:nil hints:nil],
+			foldingDotsFactory);
 		metalContext.set_metal(true);
 
 		documentView->draw(metalContext, aRect, [self isFlipped],
@@ -1284,9 +1285,22 @@ doScroll:
 			}];
 		}
 
+		NSMutableArray* imageCmds = [NSMutableArray arrayWithCapacity:metalContext.metal_images.size()];
+		for(auto const& cmd : metalContext.metal_images)
+		{
+			[imageCmds addObject:@{
+				@"image": (__bridge id)cmd.image,
+				@"x": @(cmd.rect.origin.x), @"y": @(cmd.rect.origin.y),
+				@"w": @(cmd.rect.size.width), @"h": @(cmd.rect.size.height),
+				@"r": @(cmd.r), @"g": @(cmd.g), @"b": @(cmd.b), @"a": @(cmd.a),
+				@"isMask": @(cmd.isMask),
+			}];
+		}
+
 		NSDictionary* pipelineData = @{
 			@"rects": rectCmds,
 			@"lines": lineCmds,
+			@"images": imageCmds,
 			@"viewportW": @(aRect.size.width * backingScale),
 			@"viewportH": @(aRect.size.height * backingScale),
 			@"scale": @(backingScale),

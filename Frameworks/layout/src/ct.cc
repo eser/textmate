@@ -29,6 +29,12 @@ namespace ng
 			if(pair.second)
 				CGImageRelease(pair.second);
 		}
+
+		// Release retained Metal command resources
+		for(auto const& cmd : metal_lines)
+			CFRelease(cmd.line);
+		for(auto const& cmd : metal_images)
+			CGImageRelease(cmd.image);
 	}
 
 	void context_t::fill_rect (CGColorRef color, CGRect const& rect) const
@@ -59,7 +65,7 @@ namespace ng
 		{
 			metal_line_cmd_t cmd;
 			cmd.pos = pos;
-			cmd.line = line;
+			cmd.line = (CTLineRef)CFRetain(line); // Retain — caller may release after draw_line returns
 			cmd.isFlipped = isFlipped;
 			cmd.height = height;
 			metal_lines.push_back(cmd);
@@ -71,6 +77,53 @@ namespace ng
 				CGContextConcatCTM(_context, CGAffineTransformMake(1, 0, 0, -1, 0, 2 * pos.y + height));
 			CGContextSetTextPosition(_context, pos.x, pos.y);
 			CTLineDraw(line, _context);
+			CGContextRestoreGState(_context);
+		}
+	}
+
+	void context_t::draw_image (CGImageRef image, CGRect const& rect, bool isFlipped) const
+	{
+		if(_metal)
+		{
+			metal_image_cmd_t cmd;
+			cmd.rect = rect;
+			cmd.image = (CGImageRef)CFRetain(image);
+			cmd.r = 1; cmd.g = 1; cmd.b = 1; cmd.a = 1;
+			cmd.isMask = false;
+			metal_images.push_back(cmd);
+		}
+		else
+		{
+			CGContextSaveGState(_context);
+			if(isFlipped)
+				CGContextConcatCTM(_context, CGAffineTransformMake(1, 0, 0, -1, 0, 2 * rect.origin.y + rect.size.height));
+			CGContextDrawImage(_context, rect, image);
+			CGContextRestoreGState(_context);
+		}
+	}
+
+	void context_t::draw_image_masked (CGImageRef mask, CGRect const& rect, CGColorRef color) const
+	{
+		if(_metal)
+		{
+			metal_image_cmd_t cmd;
+			cmd.rect = rect;
+			cmd.image = (CGImageRef)CFRetain(mask);
+			const CGFloat* c = CGColorGetComponents(color);
+			size_t nc = CGColorGetNumberOfComponents(color);
+			cmd.r = nc >= 1 ? c[0] : 1;
+			cmd.g = nc >= 2 ? c[1] : 1;
+			cmd.b = nc >= 3 ? c[2] : 1;
+			cmd.a = nc >= 4 ? c[3] : 1;
+			cmd.isMask = true;
+			metal_images.push_back(cmd);
+		}
+		else
+		{
+			CGContextSaveGState(_context);
+			CGContextClipToMask(_context, rect, mask);
+			CGContextSetFillColorWithColor(_context, color);
+			CGContextFillRect(_context, rect);
 			CGContextRestoreGState(_context);
 		}
 	}
@@ -301,12 +354,8 @@ namespace ct
 	{
 		if(CGImageRef spellingDot = context.spelling_dot())
 		{
-			CGContextSaveGState(context);
-			if(isFlipped)
-				CGContextConcatCTM(context, CGAffineTransformMake(1, 0, 0, -1, 0, 2 * rect.origin.y + 3));
 			for(CGFloat x = rect.origin.x; x < rect.origin.x + rect.size.width - 0.5; x += 4)
-				CGContextDrawImage(context, CGRectMake(x, rect.origin.y, 4, 3), spellingDot);
-			CGContextRestoreGState(context);
+				context.draw_image(spellingDot, CGRectMake(x, rect.origin.y, 4, 3), isFlipped);
 		}
 	}
 
@@ -318,9 +367,6 @@ namespace ct
 		CFAttributedStringSetAttribute(str, CFRangeMake(0, CFAttributedStringGetLength(str)), kCTForegroundColorAttributeName, styles.foreground());
 		CTLineRef line = CTLineCreateWithAttributedString(str);
 		CFRelease(str);
-		CGContextSaveGState(context);
-		if(isFlipped)
-			CGContextConcatCTM(context, CGAffineTransformMake(1, 0, 0, -1, 0, 2 * pos.y));
 
 		for(auto const& location : locations)
 		{
@@ -330,10 +376,8 @@ namespace ct
 			CGFloat x1 = round(pos.x + offset_for_index(location));
 			CGFloat x2 = round(pos.x + offset_for_index(location+1));
 			CGFloat x = x2 < x1 ? x1 - CTLineGetTypographicBounds(line, nullptr, nullptr, nullptr) : x1;
-			CGContextSetTextPosition(context, x, pos.y);
-			CTLineDraw(line, context);
+			context.draw_line(line, CGPointMake(x, pos.y), isFlipped, 0);
 		}
-		CGContextRestoreGState(context);
 		CFRelease(line);
 	}
 

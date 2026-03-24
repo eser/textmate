@@ -52,7 +52,7 @@ namespace ng
 			return NULL_STR;
 		}
 
-		static void draw_line (CGPoint pos, std::string const& text, CGColorRef color, CTFontRef font, CGContextRef context, bool isFlipped)
+		static void draw_line (CGPoint pos, std::string const& text, CGColorRef color, CTFontRef font, ng::context_t const& context, bool isFlipped)
 		{
 			ASSERT(utf8::is_valid(text.begin(), text.end()));
 			if(CFMutableAttributedStringRef str = CFAttributedStringCreateMutable(kCFAllocatorDefault, 0))
@@ -63,13 +63,7 @@ namespace ng
 
 				if(CTLineRef line = CTLineCreateWithAttributedString(str))
 				{
-					CGContextSaveGState(context);
-					if(isFlipped)
-						CGContextConcatCTM(context, CGAffineTransformMake(1, 0, 0, -1, 0, 2 * pos.y));
-					CGContextSetTextPosition(context, pos.x, pos.y);
-					CTLineDraw(line, context);
-					CGContextRestoreGState(context);
-
+					context.draw_line(line, pos, isFlipped, 0);
 					CFRelease(line);
 				}
 				CFRelease(str);
@@ -215,10 +209,7 @@ namespace ng
 				CGRect rect = CGRectMake(x1, y1, x2 - x1, y2 - y1);
 				if(CGImageRef imageMask = context.folding_dots(CGRectGetWidth(rect), CGRectGetHeight(rect)))
 				{
-					CGContextSaveGState(context);
-					CGContextClipToMask(context, rect, imageMask);
-					render::fill_rect(context, styles.foreground(), rect);
-					CGContextRestoreGState(context);
+					context.draw_image_masked(imageMask, rect, styles.foreground());
 				}
 			}
 		}
@@ -739,7 +730,8 @@ namespace ng
 
 	void paragraph_t::draw_foreground (theme_ptr const& theme, ct::metrics_t const& metrics, ng::context_t const& context, bool isFlipped, CGRect visibleRect, ng::buffer_t const& buffer, size_t bufferOffset, ng::ranges_t const& selection, CGPoint anchor) const
 	{
-		CGContextSetTextMatrix(context, CGAffineTransformMake(1, 0, 0, 1, 0, 0));
+		if(!context.is_metal())
+			CGContextSetTextMatrix(context, CGAffineTransformMake(1, 0, 0, 1, 0, 0));
 
 		auto lines = softlines(metrics, false);
 		for(size_t i = 0; i < lines.size(); ++i)

@@ -416,7 +416,44 @@ final class MetalFullRenderer: NSObject {
     private var offscreenTexture: MTLTexture?
     private var offscreenWidth: Int = 0
     private var offscreenHeight: Int = 0
-    private var diagPngSaved = false
+
+    /// Cache CGImage → Metal texture uploads (keyed by CGImage pointer).
+    private var imageTextureCache: [UnsafeRawPointer: MTLTexture] = [:]
+
+    /// Upload a CGImage to a Metal texture (cached).
+    private func getImageTexture(for cgImage: CGImage) -> MTLTexture? {
+        let key = UnsafeRawPointer(Unmanaged.passUnretained(cgImage as AnyObject).toOpaque())
+        if let cached = imageTextureCache[key] { return cached }
+
+        let w = cgImage.width
+        let h = cgImage.height
+        guard w > 0, h > 0 else { return nil }
+
+        // Render CGImage into a grayscale bitmap (same format as glyph atlas: r8Unorm)
+        let bytesPerRow = w
+        var bitmap = [UInt8](repeating: 0, count: w * h)
+        guard let ctx = CGContext(
+            data: &bitmap, width: w, height: h,
+            bitsPerComponent: 8, bytesPerRow: bytesPerRow,
+            space: CGColorSpaceCreateDeviceGray(),
+            bitmapInfo: CGImageAlphaInfo.none.rawValue
+        ) else { return nil }
+
+        ctx.draw(cgImage, in: CGRect(x: 0, y: 0, width: w, height: h))
+
+        let desc = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: .r8Unorm, width: w, height: h, mipmapped: false)
+        desc.usage = [.shaderRead]
+        guard let tex = device.makeTexture(descriptor: desc) else { return nil }
+
+        bitmap.withUnsafeBufferPointer { ptr in
+            tex.replace(region: MTLRegion(origin: MTLOrigin(), size: MTLSize(width: w, height: h, depth: 1)),
+                       mipmapLevel: 0, withBytes: ptr.baseAddress!, bytesPerRow: bytesPerRow)
+        }
+
+        imageTextureCache[key] = tex
+        return tex
+    }
 
     private func getOffscreenTexture(width: Int, height: Int) -> MTLTexture? {
         if let tex = offscreenTexture, offscreenWidth == width, offscreenHeight == height {
@@ -523,8 +560,6 @@ final class MetalFullRenderer: NSObject {
         // 2. Render text glyphs from collected CTLineRef commands
         encoder.setRenderPipelineState(glyphPipeline)
         var vertices: [GlyphVertex] = []
-        var diagLogged = false
-
         for lineDict in lineArray {
             guard let lineObj = lineDict["line"] else { continue }
             let ctLine = lineObj as! CTLine
@@ -561,32 +596,6 @@ final class MetalFullRenderer: NSObject {
                                      comps.count >= 4 ? Float(comps[3]) : 1)
                     } else { color = SIMD4(1, 1, 1, 1) }
                 } else { color = SIMD4(1, 1, 1, 1) }
-
-                // Diagnostic: log first glyph details to find mirror root cause
-                if !diagLogged {
-                    let fontMatrix = CTFontGetMatrix(baseFont)
-                    NSLog("METAL-DIAG: font=%@ size=%.1f matrix=[%.1f %.1f %.1f %.1f %.1f %.1f]",
-                          CTFontCopyPostScriptName(baseFont) as String,
-                          CTFontGetSize(baseFont),
-                          fontMatrix.a, fontMatrix.b, fontMatrix.c, fontMatrix.d, fontMatrix.tx, fontMatrix.ty)
-                    if count > 0, let e = atlas.entry(for: glyphs[0], font: font) {
-                        let u = atlas.uvRect(for: e)
-                        NSLog("METAL-DIAG: glyph[0] id=%d pos=(%.1f,%.1f) bearing=(%.1f,%.1f) size=%dx%d uv=(%.4f,%.4f)-(%.4f,%.4f)",
-                              glyphs[0], positions[0].x, positions[0].y,
-                              e.bearingX, e.bearingY, e.width, e.height,
-                              u.u0, u.v0, u.u1, u.v1)
-                        // Dump first row of atlas glyph to verify orientation
-                        var firstRow = [UInt8](repeating: 0, count: e.width)
-                        atlas.texture.getBytes(&firstRow, bytesPerRow: e.width,
-                            from: MTLRegion(origin: MTLOrigin(x: e.atlasX, y: e.atlasY, z: 0),
-                                           size: MTLSize(width: e.width, height: 1, depth: 1)),
-                            mipmapLevel: 0)
-                        let left5 = firstRow.prefix(5).map { String($0) }.joined(separator: ",")
-                        let right5 = firstRow.suffix(5).map { String($0) }.joined(separator: ",")
-                        NSLog("METAL-DIAG: atlas row0 left=[%@] right=[%@] (nonzero=has pixel data)", left5, right5)
-                    }
-                    diagLogged = true
-                }
 
                 for i in 0..<count {
                     guard let entry = atlas.entry(for: glyphs[i], font: font) else { continue }
@@ -626,6 +635,70 @@ final class MetalFullRenderer: NSObject {
             encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: vertices.count)
         }
 
+        // 3. Render image commands (spelling dots, folding dots)
+        if let imageArray = data["images"] as? [NSDictionary], !imageArray.isEmpty {
+            encoder.setRenderPipelineState(glyphPipeline)
+            var imgVertices: [GlyphVertex] = []
+
+            for imgDict in imageArray {
+                guard let cgImg = imgDict["image"] else { continue }
+                let cgImage = cgImg as! CGImage
+                let ix = ((imgDict["x"] as? NSNumber)?.floatValue ?? 0)
+                let iy = ((imgDict["y"] as? NSNumber)?.floatValue ?? 0)
+                let iw = ((imgDict["w"] as? NSNumber)?.floatValue ?? 0)
+                let ih = ((imgDict["h"] as? NSNumber)?.floatValue ?? 0)
+                let ir = ((imgDict["r"] as? NSNumber)?.floatValue ?? 1)
+                let ig = ((imgDict["g"] as? NSNumber)?.floatValue ?? 1)
+                let ib = ((imgDict["b"] as? NSNumber)?.floatValue ?? 1)
+                let ia = ((imgDict["a"] as? NSNumber)?.floatValue ?? 1)
+                let isMask = ((imgDict["isMask"] as? NSNumber)?.boolValue ?? false)
+
+                // Upload CGImage as a small Metal texture (cached by pointer)
+                guard let imgTex = getImageTexture(for: cgImage) else { continue }
+
+                // Flush any pending glyph vertices before switching textures
+                if !imgVertices.isEmpty {
+                    let byteLen = imgVertices.count * MemoryLayout<GlyphVertex>.stride
+                    if byteLen <= 4096 {
+                        encoder.setVertexBytes(imgVertices, length: byteLen, index: 0)
+                    } else {
+                        guard let buf = device.makeBuffer(bytes: imgVertices, length: byteLen, options: .storageModeShared) else { continue }
+                        encoder.setVertexBuffer(buf, offset: 0, index: 0)
+                    }
+                    encoder.setVertexBytes(&vp, length: MemoryLayout<SIMD2<Float>>.stride, index: 1)
+                    encoder.setFragmentTexture(imgTex, index: 0)
+                    encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: imgVertices.count)
+                    imgVertices.removeAll()
+                }
+
+                let color = isMask ? SIMD4<Float>(ir, ig, ib, ia) : SIMD4<Float>(1, 1, 1, 1)
+                let px = (ix - offsetX) * s
+                let py = (iy - offsetY) * s
+                let pw = iw * s
+                let ph = ih * s
+
+                // Image quad — full UV coverage of the image texture
+                imgVertices.append(GlyphVertex(position: SIMD2(px, py),       texCoord: SIMD2(0, 0), color: color))
+                imgVertices.append(GlyphVertex(position: SIMD2(px+pw, py),    texCoord: SIMD2(1, 0), color: color))
+                imgVertices.append(GlyphVertex(position: SIMD2(px, py+ph),    texCoord: SIMD2(0, 1), color: color))
+                imgVertices.append(GlyphVertex(position: SIMD2(px+pw, py),    texCoord: SIMD2(1, 0), color: color))
+                imgVertices.append(GlyphVertex(position: SIMD2(px+pw, py+ph), texCoord: SIMD2(1, 1), color: color))
+                imgVertices.append(GlyphVertex(position: SIMD2(px, py+ph),    texCoord: SIMD2(0, 1), color: color))
+
+                // Flush this image's vertices with its texture
+                let byteLen = imgVertices.count * MemoryLayout<GlyphVertex>.stride
+                if byteLen <= 4096 {
+                    encoder.setVertexBytes(imgVertices, length: byteLen, index: 0)
+                } else if let buf = device.makeBuffer(bytes: imgVertices, length: byteLen, options: .storageModeShared) {
+                    encoder.setVertexBuffer(buf, offset: 0, index: 0)
+                }
+                encoder.setVertexBytes(&vp, length: MemoryLayout<SIMD2<Float>>.stride, index: 1)
+                encoder.setFragmentTexture(imgTex, index: 0)
+                encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: imgVertices.count)
+                imgVertices.removeAll()
+            }
+        }
+
         encoder.endEncoding()
 
         // For managed storage (Intel Mac), synchronize texture for CPU readback
@@ -638,18 +711,6 @@ final class MetalFullRenderer: NSObject {
 
         cmdBuf.commit()
         cmdBuf.waitUntilCompleted()
-
-        // Diagnostic: log first 5 glyph vertex positions to find mirror root cause
-        if !vertices.isEmpty {
-            let logCount = min(30, vertices.count) // 5 glyphs × 6 verts = 30
-            var msg = "METAL-DIAG: first glyph vertices (pos.x, pos.y):"
-            for i in stride(from: 0, to: logCount, by: 6) {
-                let v = vertices[i]
-                msg += String(format: " [%.1f,%.1f]", v.position.x, v.position.y)
-            }
-            msg += String(format: " viewport=(%.0f,%.0f) offset=(%.1f,%.1f)", Float(texW), Float(texH), offsetX, offsetY)
-            NSLog("%@", msg)
-        }
 
         // 3. Read texture back and draw into current CGContext.
         // Use Data (reference-counted) so the pixel buffer stays alive until
@@ -675,16 +736,6 @@ final class MetalFullRenderer: NSObject {
                                  provider: provider, decode: nil,
                                  shouldInterpolate: false, intent: .defaultIntent)
         else { return }
-
-        // Diagnostic: save first full render as PNG
-        if texW > 100, texH > 100, !diagPngSaved {
-            diagPngSaved = true
-            let bitmapRep = NSBitmapImageRep(cgImage: image)
-            if let pngData = bitmapRep.representation(using: .png, properties: [:]) {
-                try? pngData.write(to: URL(fileURLWithPath: "/tmp/metal_render.png"))
-                NSLog("METAL-DIAG: saved /tmp/metal_render.png (%dx%d)", texW, texH)
-            }
-        }
 
         // CGContextDrawImage always places image row 0 at the BOTTOM of destRect,
         // ignoring the context's flipped state. In OakTextView's flipped context

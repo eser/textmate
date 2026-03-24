@@ -8,6 +8,7 @@
 - **Context:** Outside voice in CEO review flagged this. All crashes in prior sessions were at interop boundaries (Onigmo, macOS 15+ NIB loading, value transformers).
 - **Depends on:** Nothing
 
+
 ## P2 — Medium Priority
 
 ### Clean up dead Sources/SW3T* greenfield code
