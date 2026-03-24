@@ -31,6 +31,50 @@ namespace ng
 		}
 	}
 
+	void context_t::fill_rect (CGColorRef color, CGRect const& rect) const
+	{
+		if(_metal)
+		{
+			metal_rect_cmd_t cmd;
+			cmd.rect = rect;
+			const CGFloat* c = CGColorGetComponents(color);
+			size_t nc = CGColorGetNumberOfComponents(color);
+			cmd.r = nc >= 1 ? c[0] : 1;
+			cmd.g = nc >= 2 ? c[1] : 1;
+			cmd.b = nc >= 3 ? c[2] : 1;
+			cmd.a = nc >= 4 ? c[3] : 1;
+			metal_rects.push_back(cmd);
+		}
+		else
+		{
+			ASSERT(color);
+			CGContextSetFillColorWithColor(_context, color);
+			CGContextFillRect(_context, rect);
+		}
+	}
+
+	void context_t::draw_line (CTLineRef line, CGPoint pos, bool isFlipped, CGFloat height) const
+	{
+		if(_metal)
+		{
+			metal_line_cmd_t cmd;
+			cmd.pos = pos;
+			cmd.line = line;
+			cmd.isFlipped = isFlipped;
+			cmd.height = height;
+			metal_lines.push_back(cmd);
+		}
+		else
+		{
+			CGContextSaveGState(_context);
+			if(isFlipped)
+				CGContextConcatCTM(_context, CGAffineTransformMake(1, 0, 0, -1, 0, 2 * pos.y + height));
+			CGContextSetTextPosition(_context, pos.x, pos.y);
+			CTLineDraw(line, _context);
+			CGContextRestoreGState(_context);
+		}
+	}
+
 	void context_t::setup_invisibles_mapping (std::string const& str)
 	{
 		enum state_t { kWaiting, kExclude, kSpace, kTab, kNewline } state = kWaiting;
@@ -326,12 +370,7 @@ namespace ct
 			draw_spelling_dot(context, CGRectMake(x1, pos.y + 1, x2 - x1, 3), isFlipped);
 		}
 
-		CGContextSaveGState(context);
-		if(isFlipped)
-			CGContextConcatCTM(context, CGAffineTransformMake(1, 0, 0, -1, 0, 2 * pos.y));
-		CGContextSetTextPosition(context, pos.x, pos.y);
-		CTLineDraw(_line.get(), context);
-		CGContextRestoreGState(context);
+		context.draw_line(_line.get(), pos, isFlipped, 0);
 	}
 
 	void line_t::draw_background (CGPoint pos, CGFloat height, ng::context_t const& context, bool isFlipped, CGColorRef currentBackground) const

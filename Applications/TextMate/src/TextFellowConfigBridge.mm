@@ -8,6 +8,8 @@
 #import <MetalKit/MetalKit.h>
 #import "TextFellow-Swift.h"
 #import <settings/settings.h>
+#import <bundles/bundles.h>
+#import <oak/misc.h>
 
 @interface TextFellowConfigBridge : NSObject
 + (void)applyConfigToSettings;
@@ -34,7 +36,21 @@
 		NSString* value = [config stringValueForKey:m.tomlKey];
 		if(value)
 		{
-			settings_t::set(m.tmKey, std::string(value.UTF8String));
+			std::string strValue(value.UTF8String);
+
+			// Theme key needs UUID, not name — resolve via bundle lookup
+			if(m.tmKey == kSettingsThemeKey && strValue.find('-') == std::string::npos)
+			{
+				// It's a name, not a UUID — look up the theme by name
+				for(auto const& item : bundles::query(bundles::kFieldName, strValue, scope::wildcard, bundles::kItemTypeTheme))
+				{
+					strValue = to_s(item->uuid());
+					[NSUserDefaults.standardUserDefaults setObject:@(strValue.c_str()) forKey:@"themeUUID"];
+					break;
+				}
+			}
+
+			settings_t::set(m.tmKey, strValue);
 		}
 	}
 

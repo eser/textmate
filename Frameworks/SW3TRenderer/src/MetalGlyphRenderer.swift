@@ -10,6 +10,7 @@
 import AppKit
 import MetalKit
 import CoreText
+import os.log
 import CoreGraphics
 
 // MARK: - Glyph Vertex
@@ -93,8 +94,8 @@ final class MetalGlyphAtlas {
         ) else { return nil }
 
         ctx.setFillColor(gray: 1.0, alpha: 1.0)
-        let origin = CGPoint(x: -boundingRect.origin.x + 1, y: -boundingRect.origin.y + 1)
-        CTFontDrawGlyphs(font, &glyphRef, &[origin], 1, ctx)
+        var origin = CGPoint(x: -boundingRect.origin.x + 1, y: -boundingRect.origin.y + 1)
+        CTFontDrawGlyphs(font, &glyphRef, &origin, 1, ctx)
 
         // Copy to atlas texture
         let region = MTLRegion(origin: MTLOrigin(x: nextX, y: nextY, z: 0),
@@ -257,6 +258,10 @@ final class MetalFullRenderer: NSObject {
             glyphDesc.colorAttachments[0].isBlendingEnabled = true
             glyphDesc.colorAttachments[0].sourceRGBBlendFactor = .sourceAlpha
             glyphDesc.colorAttachments[0].destinationRGBBlendFactor = .oneMinusSourceAlpha
+            // Preserve destination alpha — glyph quads with atlas alpha=0 must not
+            // punch holes in the texture's alpha channel (causes visible backgrounds)
+            glyphDesc.colorAttachments[0].sourceAlphaBlendFactor = .zero
+            glyphDesc.colorAttachments[0].destinationAlphaBlendFactor = .one
             glyphPipeline = try device.makeRenderPipelineState(descriptor: glyphDesc)
 
             let rectDesc = MTLRenderPipelineDescriptor()
@@ -280,7 +285,8 @@ final class MetalFullRenderer: NSObject {
         lines: [(text: NSAttributedString, origin: CGPoint, syntaxColor: NSColor?)],
         selections: [MetalSelectionRect],
         cursor: MetalCursorInfo?,
-        backgroundColor: NSColor
+        backgroundColor: NSColor,
+        backingScale: CGFloat = 2.0
     ) {
         guard let glyphPipeline, let rectPipeline, let atlas,
               let cmdBuf = commandQueue.makeCommandBuffer(),
@@ -310,7 +316,7 @@ final class MetalFullRenderer: NSObject {
         encoder.setRenderPipelineState(glyphPipeline)
         var vertices: [GlyphVertex] = []
 
-        for (attrText, origin, syntaxColor) in lines {
+        for (attrText, origin, _) in lines {
             let line = CTLineCreateWithAttributedString(attrText)
             let runs = CTLineGetGlyphRuns(line) as! [CTRun]
 
@@ -322,23 +328,33 @@ final class MetalFullRenderer: NSObject {
                 CTRunGetPositions(run, CFRange(location: 0, length: count), &positions)
 
                 let attrs = CTRunGetAttributes(run) as! [CFString: Any]
-                let font = (attrs[kCTFontAttributeName] as! CTFont?) ?? CTFontCreateWithName("Menlo" as CFString, 13, nil)
+                let baseFont = (attrs[kCTFontAttributeName] as! CTFont?) ?? CTFontCreateWithName("Menlo" as CFString, 13, nil)
+                // Scale font for Retina: rasterize at pixel size, not point size
+                let scaledSize = CTFontGetSize(baseFont) * backingScale
+                let font = CTFontCreateCopyWithAttributes(baseFont, scaledSize, nil, nil)
 
-                // Get color from syntax or run attributes
+                // Extract foreground color from CTRun (kCTForegroundColorAttributeName = CGColor)
                 let color: SIMD4<Float>
-                if let sc = syntaxColor?.usingColorSpace(.sRGB) {
-                    color = SIMD4(Float(sc.redComponent), Float(sc.greenComponent),
-                                 Float(sc.blueComponent), Float(sc.alphaComponent))
+                if let colorVal = attrs[kCTForegroundColorAttributeName] {
+                    let cg = unsafeBitCast(colorVal as AnyObject, to: CGColor.self)
+                    if let comps = cg.components, comps.count >= 3 {
+                        color = SIMD4(Float(comps[0]), Float(comps[1]), Float(comps[2]),
+                                     comps.count >= 4 ? Float(comps[3]) : 1)
+                    } else {
+                        color = SIMD4(1, 1, 1, 1)
+                    }
                 } else {
-                    color = SIMD4(1, 1, 1, 1) // default white
+                    color = SIMD4(1, 1, 1, 1)
                 }
 
+                let s = Float(backingScale)
                 for i in 0..<count {
                     guard let entry = atlas.entry(for: glyphs[i], font: font) else { continue }
                     let uv = atlas.uvRect(for: entry)
 
-                    let x = Float(origin.x + positions[i].x) + entry.bearingX
-                    let y = Float(origin.y + positions[i].y) - entry.bearingY - Float(entry.height)
+                    // positions are in points, scale to pixels
+                    let x = Float(origin.x) + Float(positions[i].x) * s + entry.bearingX
+                    let y = Float(origin.y) + Float(positions[i].y) * s - entry.bearingY - Float(entry.height)
                     let w = Float(entry.width)
                     let h = Float(entry.height)
 
@@ -354,8 +370,19 @@ final class MetalFullRenderer: NSObject {
         }
 
         if !vertices.isEmpty {
-            encoder.setVertexBytes(vertices, length: vertices.count * MemoryLayout<GlyphVertex>.size, index: 0)
-            encoder.setVertexBytes(&vp, length: 8, index: 1)
+            let byteLen = vertices.count * MemoryLayout<GlyphVertex>.stride
+            // setVertexBytes has a 4KB limit; use a buffer for larger data
+            if byteLen <= 4096 {
+                encoder.setVertexBytes(vertices, length: byteLen, index: 0)
+            } else {
+                guard let buf = device.makeBuffer(bytes: vertices, length: byteLen, options: .storageModeShared) else {
+                    encoder.endEncoding()
+                    cmdBuf.commit()
+                    return
+                }
+                encoder.setVertexBuffer(buf, offset: 0, index: 0)
+            }
+            encoder.setVertexBytes(&vp, length: MemoryLayout<SIMD2<Float>>.stride, index: 1)
             encoder.setFragmentTexture(atlas.texture, index: 0)
             encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: vertices.count)
         }
@@ -382,4 +409,291 @@ final class MetalFullRenderer: NSObject {
 
     /// Number of glyphs currently cached in the atlas.
     @objc var cachedGlyphCount: Int { atlas?.cachedGlyphCount ?? 0 }
+
+    // MARK: - Pipeline Integration (Step 4)
+
+    /// Cached offscreen texture for pipeline rendering.
+    private var offscreenTexture: MTLTexture?
+    private var offscreenWidth: Int = 0
+    private var offscreenHeight: Int = 0
+    private var diagPngSaved = false
+
+    private func getOffscreenTexture(width: Int, height: Int) -> MTLTexture? {
+        if let tex = offscreenTexture, offscreenWidth == width, offscreenHeight == height {
+            return tex
+        }
+        let desc = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: .bgra8Unorm, width: width, height: height, mipmapped: false)
+        desc.usage = [.renderTarget, .shaderRead]
+        desc.storageMode = device.hasUnifiedMemory ? .shared : .managed
+        offscreenTexture = device.makeTexture(descriptor: desc)
+        offscreenWidth = width
+        offscreenHeight = height
+        return offscreenTexture
+    }
+
+    /// Render collected pipeline commands (from dual-mode context_t) and draw into the current CGContext.
+    ///
+    /// Called from OakTextView.drawRect via performSelector. The data dictionary contains:
+    ///   - "rects": [[String: NSNumber]] — fill rects with RGBA colors (from metal_rect_cmd_t)
+    ///   - "lines": [NSDictionary] — text lines with CTLineRef (from metal_line_cmd_t)
+    ///   - "viewportW/H": pixel dimensions of the render target
+    ///   - "scale": backing scale factor
+    ///   - "visibleX/Y": origin of the visible rect in view coordinates
+    ///   - "drawWidth/Height": size of the draw rect in points
+    @objc func renderPipelineData(_ data: NSDictionary) {
+        guard let rectArray = data["rects"] as? [[String: NSNumber]],
+              let lineArray = data["lines"] as? [NSDictionary],
+              let viewportW = (data["viewportW"] as? NSNumber)?.intValue,
+              let viewportH = (data["viewportH"] as? NSNumber)?.intValue,
+              let scale = (data["scale"] as? NSNumber)?.doubleValue,
+              let visX = (data["visibleX"] as? NSNumber)?.doubleValue,
+              let visY = (data["visibleY"] as? NSNumber)?.doubleValue,
+              let drawW = (data["drawWidth"] as? NSNumber)?.doubleValue,
+              let drawH = (data["drawHeight"] as? NSNumber)?.doubleValue,
+              let glyphPipeline, let rectPipeline, let atlas
+        else { return }
+
+        let texW = max(1, viewportW)
+        let texH = max(1, viewportH)
+        guard let texture = getOffscreenTexture(width: texW, height: texH) else { return }
+
+        // Create render pass — clear with background color from first rect fill
+        let renderPass = MTLRenderPassDescriptor()
+        renderPass.colorAttachments[0].texture = texture
+        renderPass.colorAttachments[0].loadAction = .clear
+        if let bgRect = rectArray.first {
+            renderPass.colorAttachments[0].clearColor = MTLClearColor(
+                red: bgRect["r"]!.doubleValue, green: bgRect["g"]!.doubleValue,
+                blue: bgRect["b"]!.doubleValue, alpha: 1.0)
+        } else {
+            renderPass.colorAttachments[0].clearColor = MTLClearColor(red: 0.1, green: 0.1, blue: 0.1, alpha: 1.0)
+        }
+        renderPass.colorAttachments[0].storeAction = .store
+
+        guard let cmdBuf = commandQueue.makeCommandBuffer(),
+              let encoder = cmdBuf.makeRenderCommandEncoder(descriptor: renderPass) else { return }
+
+        var vp = SIMD2<Float>(Float(texW), Float(texH))
+        let s = Float(scale)
+        let offsetX = Float(visX)
+        let offsetY = Float(visY)
+
+        // 1. Render rect fills (skip first — it's the background, handled by clear color)
+        if rectArray.count > 1 {
+            encoder.setRenderPipelineState(rectPipeline)
+            var rects: [SIMD4<Float>] = []
+            var colors: [SIMD4<Float>] = []
+
+            for i in 1..<rectArray.count {
+                let dict = rectArray[i]
+                let x = (dict["x"]!.floatValue - offsetX) * s
+                let y = (dict["y"]!.floatValue - offsetY) * s
+                let w = dict["w"]!.floatValue * s
+                let h = dict["h"]!.floatValue * s
+                rects.append(SIMD4(x, y, w, h))
+                colors.append(SIMD4(dict["r"]!.floatValue, dict["g"]!.floatValue,
+                                    dict["b"]!.floatValue, dict["a"]!.floatValue))
+            }
+
+            if !rects.isEmpty {
+                let rectBytes = rects.count * MemoryLayout<SIMD4<Float>>.stride
+                let colorBytes = colors.count * MemoryLayout<SIMD4<Float>>.stride
+                if rectBytes <= 4096 {
+                    encoder.setVertexBytes(rects, length: rectBytes, index: 0)
+                } else {
+                    guard let buf = device.makeBuffer(bytes: rects, length: rectBytes, options: .storageModeShared) else {
+                        encoder.endEncoding(); cmdBuf.commit(); return
+                    }
+                    encoder.setVertexBuffer(buf, offset: 0, index: 0)
+                }
+                if colorBytes <= 4096 {
+                    encoder.setVertexBytes(colors, length: colorBytes, index: 1)
+                } else {
+                    guard let buf = device.makeBuffer(bytes: colors, length: colorBytes, options: .storageModeShared) else {
+                        encoder.endEncoding(); cmdBuf.commit(); return
+                    }
+                    encoder.setVertexBuffer(buf, offset: 0, index: 1)
+                }
+                encoder.setVertexBytes(&vp, length: MemoryLayout<SIMD2<Float>>.stride, index: 2)
+                encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: rects.count * 6)
+            }
+        }
+
+        // 2. Render text glyphs from collected CTLineRef commands
+        encoder.setRenderPipelineState(glyphPipeline)
+        var vertices: [GlyphVertex] = []
+        var diagLogged = false
+
+        for lineDict in lineArray {
+            guard let lineObj = lineDict["line"] else { continue }
+            let ctLine = lineObj as! CTLine
+            let lx = ((lineDict["x"] as? NSNumber)?.floatValue ?? 0)
+            let ly = ((lineDict["y"] as? NSNumber)?.floatValue ?? 0)
+            let height = ((lineDict["height"] as? NSNumber)?.floatValue ?? 0)
+
+            let runs = CTLineGetGlyphRuns(ctLine) as! [CTRun]
+
+            for run in runs {
+                let count = CTRunGetGlyphCount(run)
+                guard count > 0 else { continue }
+                var glyphs = [CGGlyph](repeating: 0, count: count)
+                var positions = [CGPoint](repeating: .zero, count: count)
+                CTRunGetGlyphs(run, CFRange(location: 0, length: count), &glyphs)
+                CTRunGetPositions(run, CFRange(location: 0, length: count), &positions)
+
+                let attrs = CTRunGetAttributes(run) as! [CFString: Any]
+                let baseFont: CTFont
+                if let fontVal = attrs[kCTFontAttributeName] {
+                    baseFont = (fontVal as! CTFont)
+                } else {
+                    baseFont = CTFontCreateWithName("Menlo" as CFString, 13, nil)
+                }
+                let scaledSize = CTFontGetSize(baseFont) * CGFloat(scale)
+                let font = CTFontCreateCopyWithAttributes(baseFont, scaledSize, nil, nil)
+
+                // Extract foreground color (CGColorRef from kCTForegroundColorAttributeName)
+                let color: SIMD4<Float>
+                if let colorVal = attrs[kCTForegroundColorAttributeName] {
+                    let cg = unsafeBitCast(colorVal as AnyObject, to: CGColor.self)
+                    if let comps = cg.components, comps.count >= 3 {
+                        color = SIMD4(Float(comps[0]), Float(comps[1]), Float(comps[2]),
+                                     comps.count >= 4 ? Float(comps[3]) : 1)
+                    } else { color = SIMD4(1, 1, 1, 1) }
+                } else { color = SIMD4(1, 1, 1, 1) }
+
+                // Diagnostic: log first glyph details to find mirror root cause
+                if !diagLogged {
+                    let fontMatrix = CTFontGetMatrix(baseFont)
+                    NSLog("METAL-DIAG: font=%@ size=%.1f matrix=[%.1f %.1f %.1f %.1f %.1f %.1f]",
+                          CTFontCopyPostScriptName(baseFont) as String,
+                          CTFontGetSize(baseFont),
+                          fontMatrix.a, fontMatrix.b, fontMatrix.c, fontMatrix.d, fontMatrix.tx, fontMatrix.ty)
+                    if count > 0, let e = atlas.entry(for: glyphs[0], font: font) {
+                        let u = atlas.uvRect(for: e)
+                        NSLog("METAL-DIAG: glyph[0] id=%d pos=(%.1f,%.1f) bearing=(%.1f,%.1f) size=%dx%d uv=(%.4f,%.4f)-(%.4f,%.4f)",
+                              glyphs[0], positions[0].x, positions[0].y,
+                              e.bearingX, e.bearingY, e.width, e.height,
+                              u.u0, u.v0, u.u1, u.v1)
+                        // Dump first row of atlas glyph to verify orientation
+                        var firstRow = [UInt8](repeating: 0, count: e.width)
+                        atlas.texture.getBytes(&firstRow, bytesPerRow: e.width,
+                            from: MTLRegion(origin: MTLOrigin(x: e.atlasX, y: e.atlasY, z: 0),
+                                           size: MTLSize(width: e.width, height: 1, depth: 1)),
+                            mipmapLevel: 0)
+                        let left5 = firstRow.prefix(5).map { String($0) }.joined(separator: ",")
+                        let right5 = firstRow.suffix(5).map { String($0) }.joined(separator: ",")
+                        NSLog("METAL-DIAG: atlas row0 left=[%@] right=[%@] (nonzero=has pixel data)", left5, right5)
+                    }
+                    diagLogged = true
+                }
+
+                for i in 0..<count {
+                    guard let entry = atlas.entry(for: glyphs[i], font: font) else { continue }
+                    let uv = atlas.uvRect(for: entry)
+
+                    // Position: offset from visible rect origin, scale to pixels
+                    let gx = (lx - offsetX + Float(positions[i].x)) * s + entry.bearingX
+                    // In flipped coords, text position y is baseline from top.
+                    // CTRun positions[i].y is relative to text position (usually 0 for horizontal text).
+                    let gy = (ly - offsetY + Float(positions[i].y)) * s - entry.bearingY - Float(entry.height) + height * s
+                    let gw = Float(entry.width)
+                    let gh = Float(entry.height)
+
+                    // Two triangles per glyph quad
+                    vertices.append(GlyphVertex(position: SIMD2(gx, gy),       texCoord: SIMD2(uv.u0, uv.v0), color: color))
+                    vertices.append(GlyphVertex(position: SIMD2(gx+gw, gy),    texCoord: SIMD2(uv.u1, uv.v0), color: color))
+                    vertices.append(GlyphVertex(position: SIMD2(gx, gy+gh),    texCoord: SIMD2(uv.u0, uv.v1), color: color))
+                    vertices.append(GlyphVertex(position: SIMD2(gx+gw, gy),    texCoord: SIMD2(uv.u1, uv.v0), color: color))
+                    vertices.append(GlyphVertex(position: SIMD2(gx+gw, gy+gh), texCoord: SIMD2(uv.u1, uv.v1), color: color))
+                    vertices.append(GlyphVertex(position: SIMD2(gx, gy+gh),    texCoord: SIMD2(uv.u0, uv.v1), color: color))
+                }
+            }
+        }
+
+        if !vertices.isEmpty {
+            let byteLen = vertices.count * MemoryLayout<GlyphVertex>.stride
+            if byteLen <= 4096 {
+                encoder.setVertexBytes(vertices, length: byteLen, index: 0)
+            } else {
+                guard let buf = device.makeBuffer(bytes: vertices, length: byteLen, options: .storageModeShared) else {
+                    encoder.endEncoding(); cmdBuf.commit(); return
+                }
+                encoder.setVertexBuffer(buf, offset: 0, index: 0)
+            }
+            encoder.setVertexBytes(&vp, length: MemoryLayout<SIMD2<Float>>.stride, index: 1)
+            encoder.setFragmentTexture(atlas.texture, index: 0)
+            encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: vertices.count)
+        }
+
+        encoder.endEncoding()
+
+        // For managed storage (Intel Mac), synchronize texture for CPU readback
+        if !device.hasUnifiedMemory {
+            if let blit = cmdBuf.makeBlitCommandEncoder() {
+                blit.synchronize(resource: texture)
+                blit.endEncoding()
+            }
+        }
+
+        cmdBuf.commit()
+        cmdBuf.waitUntilCompleted()
+
+        // Diagnostic: log first 5 glyph vertex positions to find mirror root cause
+        if !vertices.isEmpty {
+            let logCount = min(30, vertices.count) // 5 glyphs × 6 verts = 30
+            var msg = "METAL-DIAG: first glyph vertices (pos.x, pos.y):"
+            for i in stride(from: 0, to: logCount, by: 6) {
+                let v = vertices[i]
+                msg += String(format: " [%.1f,%.1f]", v.position.x, v.position.y)
+            }
+            msg += String(format: " viewport=(%.0f,%.0f) offset=(%.1f,%.1f)", Float(texW), Float(texH), offsetX, offsetY)
+            NSLog("%@", msg)
+        }
+
+        // 3. Read texture back and draw into current CGContext.
+        // Use Data (reference-counted) so the pixel buffer stays alive until
+        // CoreGraphics finishes reading — CG uses display lists and may read
+        // asynchronously after cgContext.draw() returns.
+        guard let cgContext = NSGraphicsContext.current?.cgContext else { return }
+
+        let bytesPerRow = texW * 4
+        let totalBytes = bytesPerRow * texH
+        var pixelData = Data(count: totalBytes)
+        pixelData.withUnsafeMutableBytes { ptr in
+            texture.getBytes(ptr.baseAddress!, bytesPerRow: bytesPerRow,
+                             from: MTLRegion(origin: MTLOrigin(), size: MTLSize(width: texW, height: texH, depth: 1)),
+                             mipmapLevel: 0)
+        }
+
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        guard let provider = CGDataProvider(data: pixelData as CFData),
+              let image = CGImage(width: texW, height: texH,
+                                 bitsPerComponent: 8, bitsPerPixel: 32,
+                                 bytesPerRow: bytesPerRow, space: colorSpace,
+                                 bitmapInfo: CGBitmapInfo(rawValue: CGBitmapInfo.byteOrder32Little.rawValue | CGImageAlphaInfo.noneSkipFirst.rawValue),
+                                 provider: provider, decode: nil,
+                                 shouldInterpolate: false, intent: .defaultIntent)
+        else { return }
+
+        // Diagnostic: save first full render as PNG
+        if texW > 100, texH > 100, !diagPngSaved {
+            diagPngSaved = true
+            let bitmapRep = NSBitmapImageRep(cgImage: image)
+            if let pngData = bitmapRep.representation(using: .png, properties: [:]) {
+                try? pngData.write(to: URL(fileURLWithPath: "/tmp/metal_render.png"))
+                NSLog("METAL-DIAG: saved /tmp/metal_render.png (%dx%d)", texW, texH)
+            }
+        }
+
+        // CGContextDrawImage always places image row 0 at the BOTTOM of destRect,
+        // ignoring the context's flipped state. In OakTextView's flipped context
+        // (y=0 at top), this causes the image to render upside-down.
+        // Fix: apply a local y-flip transform so the image draws correctly.
+        cgContext.saveGState()
+        cgContext.translateBy(x: 0, y: CGFloat(visY) + CGFloat(drawH))
+        cgContext.scaleBy(x: 1, y: -1)
+        cgContext.draw(image, in: CGRect(x: visX, y: 0, width: drawW, height: drawH))
+        cgContext.restoreGState()
+    }
 }

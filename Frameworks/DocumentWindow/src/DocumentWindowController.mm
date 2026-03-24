@@ -205,11 +205,7 @@ static NSArray* const kObservedKeyPaths = @[ @"arrayController.arrangedObjects.p
 		self.window.releasedWhenClosed = NO;
 		self.window.titlebarSeparatorStyle = NSTitlebarSeparatorStyleNone;
 
-		_titlebarViewController = [[NSTitlebarAccessoryViewController alloc] init];
-		self.tabBarView.frameSize = self.tabBarView.intrinsicContentSize;
-		_titlebarViewController.view = self.tabBarView;
-		_titlebarViewController.fullScreenMinHeight = NSHeight(self.tabBarView.frame);
-		[self.window addTitlebarAccessoryViewController:_titlebarViewController];
+		self.layoutView.tabBarView = self.tabBarView;
 
 		OakAddAutoLayoutViewsToSuperview(@[ self.layoutView ], self.window.contentView);
 		self.window.initialFirstResponder = self.textView;
@@ -386,7 +382,7 @@ static NSArray* const kObservedKeyPaths = @[ @"arrayController.arrangedObjects.p
 	}
 
 	BOOL disableTabBarCollapsingKey = [NSUserDefaults.standardUserDefaults boolForKey:kUserDefaultsDisableTabBarCollapsingKey];
-	self.titlebarViewController.hidden = !disableTabBarCollapsingKey && self.documents.count <= 1;
+	self.layoutView.tabBarView = (!disableTabBarCollapsingKey && self.documents.count <= 1) ? nil : self.tabBarView;
 }
 
 - (void)applicationDidBecomeActiveNotification:(NSNotification*)aNotification
@@ -1516,7 +1512,7 @@ static NSArray* const kObservedKeyPaths = @[ @"arrayController.arrangedObjects.p
 	}
 
 	BOOL disableTabBarCollapsingKey = [NSUserDefaults.standardUserDefaults boolForKey:kUserDefaultsDisableTabBarCollapsingKey];
-	self.titlebarViewController.hidden = !disableTabBarCollapsingKey && self.documents.count <= 1;
+	self.layoutView.tabBarView = (!disableTabBarCollapsingKey && self.documents.count <= 1) ? nil : self.tabBarView;
 
 	[self updateTouchBarButtons];
 	[[self class] scheduleSessionBackup:self];

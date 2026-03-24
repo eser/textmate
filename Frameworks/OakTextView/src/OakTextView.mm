@@ -42,6 +42,7 @@
 #import <settings/settings.h>
 #import <oak/debug.h>
 #import <editor/editor.h>
+#import <Metal/Metal.h>
 #import <editor/write.h>
 #import <io/exec.h>
 #import <Find/Find.h>
@@ -1185,32 +1186,27 @@ doScroll:
 		return;
 	}
 
-#if __has_include("TextFellow-Swift.h")
-	// Metal renderer toggle: defaults write org.sw3t.TextFellow metalRenderer -bool YES/NO
 	static BOOL useMetalRenderer = [NSUserDefaults.standardUserDefaults boolForKey:@"metalRenderer"];
+	static id metalFullRenderer = nil;
 	if(useMetalRenderer)
 	{
-		// Metal Phase 1: CoreText → Metal texture (same quality, GPU compositing)
-		static id metalOverlay = nil;
 		static dispatch_once_t metalOnce;
 		dispatch_once(&metalOnce, ^{
-			Class overlayClass = NSClassFromString(@"SW3TMetalOverlayView");
-			if(overlayClass)
+			id<MTLDevice> device = MTLCreateSystemDefaultDevice();
+			if(device)
 			{
-				metalOverlay = [[overlayClass alloc] performSelector:NSSelectorFromString(@"initWithParentView:") withObject:self];
-				if(metalOverlay)
-				{
-					[metalOverlay setValue:@1.0 forKey:@"alphaValue"]; // fully opaque — replaces CGContext
-					os_log_info(OS_LOG_DEFAULT, "Metal renderer active — replacing CoreText+CGContext");
-				}
+				Class rendererClass = NSClassFromString(@"SW3TMetalFullRenderer");
+				if(rendererClass)
+					metalFullRenderer = [[rendererClass alloc] performSelector:NSSelectorFromString(@"initWithDevice:") withObject:device];
 			}
+			if(metalFullRenderer)
+				NSLog(@"Metal pipeline renderer initialized");
+			else
+				NSLog(@"Metal pipeline init failed — falling back to CoreText");
 		});
-
-		// Still run the CoreText path underneath for hit-testing / selection model
-		// but the Metal overlay covers it visually
 	}
-#endif
 
+	// Standard CGContext setup — used by both CoreText and Metal paths
 	if(self.theme->is_transparent())
 	{
 		[NSColor.clearColor set];
@@ -1243,6 +1239,71 @@ doScroll:
 		return NULL;
 	};
 
+	// Full Metal pipeline — all rendering via GPU
+	if(metalFullRenderer)
+	{
+		// Dummy CGContext absorbs stray CGContext calls (spelling dots, invisibles,
+		// strikethroughs, folding dots) that haven't been ported to Metal yet.
+		// TODO: Add Metal command types for these decorations.
+		CGColorSpaceRef cs = CGColorSpaceCreateDeviceRGB();
+		CGContextRef dummyCtx = CGBitmapContextCreate(NULL, 1, 1, 8, 4, cs, kCGImageAlphaPremultipliedFirst);
+		CGColorSpaceRelease(cs);
+
+		ng::context_t metalContext(dummyCtx,
+			_showInvisibles ? documentView->invisibles_map : NULL_STR,
+			nil, foldingDotsFactory);
+		metalContext.set_metal(true);
+
+		documentView->draw(metalContext, aRect, [self isFlipped],
+			merge(documentView->ranges(), [self markedRanges]), _liveSearchRanges);
+
+		CGContextRelease(dummyCtx);
+
+		// Pack collected commands for Metal renderer
+		CGFloat backingScale = self.window.backingScaleFactor ?: 2.0;
+
+		NSMutableArray* rectCmds = [NSMutableArray arrayWithCapacity:metalContext.metal_rects.size()];
+		for(auto const& cmd : metalContext.metal_rects)
+		{
+			[rectCmds addObject:@{
+				@"x": @(cmd.rect.origin.x), @"y": @(cmd.rect.origin.y),
+				@"w": @(cmd.rect.size.width), @"h": @(cmd.rect.size.height),
+				@"r": @(cmd.r), @"g": @(cmd.g), @"b": @(cmd.b), @"a": @(cmd.a),
+			}];
+		}
+
+		NSMutableArray* lineCmds = [NSMutableArray arrayWithCapacity:metalContext.metal_lines.size()];
+		for(auto const& cmd : metalContext.metal_lines)
+		{
+			[lineCmds addObject:@{
+				@"line": (__bridge id)cmd.line,
+				@"x": @(cmd.pos.x),
+				@"y": @(cmd.pos.y),
+				@"flipped": @(cmd.isFlipped),
+				@"height": @(cmd.height),
+			}];
+		}
+
+		NSDictionary* pipelineData = @{
+			@"rects": rectCmds,
+			@"lines": lineCmds,
+			@"viewportW": @(aRect.size.width * backingScale),
+			@"viewportH": @(aRect.size.height * backingScale),
+			@"scale": @(backingScale),
+			@"visibleX": @(aRect.origin.x),
+			@"visibleY": @(aRect.origin.y),
+			@"drawWidth": @(aRect.size.width),
+			@"drawHeight": @(aRect.size.height),
+		};
+
+		SEL renderSel = NSSelectorFromString(@"renderPipelineData:");
+		if([metalFullRenderer respondsToSelector:renderSel])
+			[metalFullRenderer performSelector:renderSel withObject:pipelineData];
+
+		return;
+	}
+
+	// CoreText rendering path (fallback)
 	documentView->draw(ng::context_t(context, _showInvisibles ? documentView->invisibles_map : NULL_STR, [spellingDotImage CGImageForProposedRect:NULL context:[NSGraphicsContext currentContext] hints:nil], foldingDotsFactory), aRect, [self isFlipped], merge(documentView->ranges(), [self markedRanges]), _liveSearchRanges);
 }
 

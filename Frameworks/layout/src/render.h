@@ -3,10 +3,12 @@
 
 #include <oak/debug.h>
 #include <theme/theme.h>
+#include "ct.h"
 
 namespace render
 {
-	void fill_rect (CGContextRef context, CGColorRef color, CGRect const& rect);
+	// Routes through context_t for Metal/CoreText dual-mode support
+	void fill_rect (ng::context_t const& context, CGColorRef color, CGRect const& rect);
 
 } /* render */
 

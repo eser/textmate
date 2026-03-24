@@ -125,6 +125,7 @@ static NSString* const kMASPreferencesSelectedViewKey = @"MASPreferences Selecte
 	return self;
 }
 
+
 - (void)windowDidMove:(NSNotification*)aNotification
 {
    [NSUserDefaults.standardUserDefaults setObject:NSStringFromPoint(NSMakePoint(NSMinX(self.window.frame), NSMaxY(self.window.frame))) forKey:kMASPreferencesFrameTopLeftKey];

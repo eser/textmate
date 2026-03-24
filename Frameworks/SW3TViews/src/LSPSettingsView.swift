@@ -78,28 +78,27 @@ public struct LSPSettingsView: View {
     }
 
     private static let defaultServers: [LSPServerConfig] = [
-        LSPServerConfig(
-            name: "SourceKit-LSP",
-            command: "sourcekit-lsp",
-            languages: "swift, c, cpp, objc, objcpp"
-        ),
-        LSPServerConfig(
-            name: "TypeScript",
-            command: "typescript-language-server",
-            arguments: "--stdio",
-            languages: "typescript, javascript, tsx, jsx"
-        ),
-        LSPServerConfig(
-            name: "Rust Analyzer",
-            command: "rust-analyzer",
-            languages: "rust"
-        ),
-        LSPServerConfig(
-            name: "Python (Pyright)",
-            command: "pyright-langserver",
-            arguments: "--stdio",
-            languages: "python"
-        ),
+        LSPServerConfig(name: "SourceKit-LSP",   command: "sourcekit-lsp",              languages: "swift, c, cpp, objc, objcpp"),
+        LSPServerConfig(name: "TypeScript",       command: "typescript-language-server",  arguments: "--stdio", languages: "typescript, javascript, tsx, jsx, js, cjs, mjs"),
+        LSPServerConfig(name: "Rust Analyzer",    command: "rust-analyzer",              languages: "rust"),
+        LSPServerConfig(name: "Python (Pyright)", command: "pyright-langserver",          arguments: "--stdio", languages: "python"),
+        LSPServerConfig(name: "Go (gopls)",       command: "gopls",                      arguments: "serve",   languages: "go"),
+        LSPServerConfig(name: "Lua",              command: "lua-language-server",         languages: "lua"),
+        LSPServerConfig(name: "Bash / Shell",     command: "bash-language-server",        arguments: "start",   languages: "sh, bash, zsh"),
+        LSPServerConfig(name: "HTML",             command: "vscode-html-language-server", arguments: "--stdio", languages: "html, htm"),
+        LSPServerConfig(name: "CSS",              command: "vscode-css-language-server",  arguments: "--stdio", languages: "css, scss, less"),
+        LSPServerConfig(name: "JSON",             command: "vscode-json-language-server", arguments: "--stdio", languages: "json, jsonc"),
+        LSPServerConfig(name: "YAML",             command: "yaml-language-server",        arguments: "--stdio", languages: "yaml, yml"),
+        LSPServerConfig(name: "TOML (Taplo)",     command: "taplo",                      arguments: "lsp stdio", languages: "toml"),
+        LSPServerConfig(name: "Markdown",         command: "marksman",                   arguments: "server",  languages: "md, markdown"),
+        LSPServerConfig(name: "Ruby (Solargraph)",command: "solargraph",                  arguments: "stdio",   languages: "ruby, rake, gemspec"),
+        LSPServerConfig(name: "PHP (Phpactor)",   command: "phpactor",                   arguments: "language-server", languages: "php"),
+        LSPServerConfig(name: "Elixir",           command: "elixir-ls",                  languages: "elixir, ex, exs"),
+        LSPServerConfig(name: "Zig",              command: "zls",                        languages: "zig"),
+        LSPServerConfig(name: "Kotlin",           command: "kotlin-language-server",      languages: "kotlin, kt, kts"),
+        LSPServerConfig(name: "Java (JDTLS)",     command: "jdtls",                      languages: "java"),
+        LSPServerConfig(name: "C# (OmniSharp)",   command: "OmniSharp",                  arguments: "-lsp",    languages: "csharp, cs"),
+        LSPServerConfig(name: "Terraform",        command: "terraform-ls",               arguments: "serve",   languages: "terraform, tf, tfvars"),
     ]
 }
 

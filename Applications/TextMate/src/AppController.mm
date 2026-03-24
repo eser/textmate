@@ -642,16 +642,6 @@ BOOL HasDocumentWindow (NSArray* windows)
 	[[SW3TAppInfo shared] bootstrap];
 	[TextFellowConfigBridge applyConfigToSettings];
 	[self registerCommandPaletteItems];
-
-	// Add LSP Settings pane to Preferences window (dynamic to avoid C++ interop issue)
-	Class lspPaneClass = NSClassFromString(@"SW3TLSPPreferencesPane");
-	if(lspPaneClass)
-	{
-		NSViewController* lspPane = [[lspPaneClass alloc] init];
-		NSWindowController* prefs = Preferences.sharedInstance;
-		if(prefs.window.contentViewController)
-			[prefs.window.contentViewController addChildViewController:lspPane];
-	}
 #endif
 }
 
@@ -678,6 +668,7 @@ BOOL HasDocumentWindow (NSArray* windows)
 
 	// Settings
 	[cp registerItemWithId:@"app.prefs"     title:@"Preferences…"       category:@"App"      shortcut:@"⌘,"  target:self selector:@selector(showPreferences:)];
+	[cp registerItemWithId:@"app.lsp"       title:@"Language Server Settings…" category:@"App" shortcut:nil   target:self selector:@selector(showLSPSettings:)];
 	[cp registerItemWithId:@"app.bundles"   title:@"Edit Bundles…"      category:@"App"      shortcut:@"⌃⌥⌘B" target:self selector:@selector(showBundleEditor:)];
 	[cp registerItemWithId:@"app.about"     title:@"About TextFellow"   category:@"App"      shortcut:nil    target:self selector:@selector(orderFrontAboutPanel:)];
 
@@ -822,6 +813,18 @@ BOOL HasDocumentWindow (NSArray* windows)
 {
 	[BundleEditor.sharedInstance showWindow:self];
 }
+
+#if __has_include("TextFellow-Swift.h")
+- (IBAction)showLSPSettings:(id)sender
+{
+	Class wc = NSClassFromString(@"SW3TLSPSettingsWindowController");
+	if(wc)
+	{
+		NSWindowController* controller = [wc performSelector:@selector(shared)];
+		[controller showWindow:self];
+	}
+}
+#endif
 
 - (IBAction)showCommandPalette:(id)sender
 {

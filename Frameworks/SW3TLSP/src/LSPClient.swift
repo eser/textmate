@@ -237,6 +237,18 @@ public actor LSPClient {
                     ],
                     "hover": ["contentFormat": ["plaintext", "markdown"]],
                     "definition": [:] as [String: Any],
+                    "semanticTokens": [
+                        "requests": ["full": true],
+                        "tokenTypes": SemanticTokenType.allCases.map { "\($0)" },
+                        "tokenModifiers": [] as [String],
+                    ] as [String: Any],
+                    "codeAction": [
+                        "codeActionLiteralSupport": [
+                            "codeActionKind": [
+                                "valueSet": ["quickfix", "refactor", "source"]
+                            ]
+                        ]
+                    ] as [String: Any],
                 ] as [String: Any]
             ] as [String: Any],
         ]
@@ -352,6 +364,36 @@ public actor LSPClient {
         }
 
         return []
+    }
+
+    /// Request semantic tokens for a document.
+    public func semanticTokensFull(uri: String) async throws -> [SemanticToken] {
+        let data = try await sendRequest("textDocument/semanticTokens/full", params: [
+            "textDocument": ["uri": uri],
+        ])
+
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let tokenData = json["data"] as? [Int] else {
+            return []
+        }
+
+        return decodeSemanticTokens(data: tokenData)
+    }
+
+    /// Request code actions at a range.
+    public func codeAction(uri: String, range: LSPRange, diagnostics: [[String: Any]] = []) async throws -> [LSPCodeAction] {
+        let data = try await sendRequest("textDocument/codeAction", params: [
+            "textDocument": ["uri": uri],
+            "range": [
+                "start": ["line": range.start.line, "character": range.start.character],
+                "end": ["line": range.end.line, "character": range.end.character],
+            ],
+            "context": [
+                "diagnostics": diagnostics,
+            ] as [String: Any],
+        ])
+
+        return parseCodeActions(from: data)
     }
 
     // MARK: - JSON-RPC Transport

@@ -5,12 +5,41 @@
 
 namespace ng
 {
+	// Collected Metal draw command — rect fill or text line
+	struct metal_rect_cmd_t
+	{
+		CGRect rect;
+		CGFloat r, g, b, a;
+	};
+
+	struct metal_line_cmd_t
+	{
+		CGPoint pos;
+		CTLineRef line; // borrowed, valid only during draw cycle
+		bool isFlipped;
+		CGFloat height;
+	};
+
 	struct context_t
 	{
+		// CoreText mode (existing)
 		context_t (CGContextRef context, std::string const& invisibleMap = NULL_STR, CGImageRef spellingDot = nil, std::function<CGImageRef(double, double)> foldingDotsFactory = std::function<CGImageRef(double, double)>());
 		~context_t ();
 
 		operator CGContextRef () const      { return _context; }
+
+		bool is_metal () const              { return _metal; }
+
+		// Enable Metal mode — draw commands collected instead of executed
+		void set_metal (bool flag)          { _metal = flag; }
+
+		// Unified draw operations — route to CoreText or Metal collector
+		void fill_rect (CGColorRef color, CGRect const& rect) const;
+		void draw_line (CTLineRef line, CGPoint pos, bool isFlipped, CGFloat height) const;
+
+		// Metal command buffers (populated during draw, consumed by OakTextView)
+		mutable std::vector<metal_rect_cmd_t> metal_rects;
+		mutable std::vector<metal_line_cmd_t> metal_lines;
 
 		std::string const& space () const   { return _space; }
 		std::string const& tab () const     { return _tab; }
@@ -23,6 +52,7 @@ namespace ng
 		void setup_invisibles_mapping (std::string const& str);
 
 		CGContextRef _context;
+		bool _metal = false;
 
 		std::string _space   = "·";
 		std::string _tab     = "‣";

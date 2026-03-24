@@ -25,6 +25,8 @@ extern const TSLanguage *tree_sitter_html(void);
 extern const TSLanguage *tree_sitter_css(void);
 extern const TSLanguage *tree_sitter_markdown(void);
 extern const TSLanguage *tree_sitter_yaml(void);
+extern const TSLanguage *tree_sitter_bash(void);
+extern const TSLanguage *tree_sitter_toml(void);
 #ifdef __cplusplus
 }
 #endif

@@ -1,25 +1,36 @@
-// SW³ TextFellow — LSP Preferences Pane
+// SW³ TextFellow — LSP Settings Window Controller
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// Wraps the SwiftUI LSPSettingsView in an NSViewController that conforms
-// to TextMate's PreferencesPaneProtocol, so it appears as a tab in Preferences.
+// Standalone window for LSP server configuration, accessible via ⌘K command palette.
+// Replaces the broken Preferences pane injection approach.
 
 import SwiftUI
 
-@objc(SW3TLSPPreferencesPane)
-public class LSPPreferencesPane: NSHostingController<LSPSettingsView> {
-    @objc public init() {
-        super.init(rootView: LSPSettingsView())
-        self.title = "Language Servers"
+@objc(SW3TLSPSettingsWindowController)
+public class LSPSettingsWindowController: NSWindowController {
+
+    @objc public static let shared = LSPSettingsWindowController()
+
+    private init() {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 600, height: 400),
+            styleMask: [.titled, .closable, .resizable, .miniaturizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "Language Server Settings"
+        window.center()
+        window.isReleasedWhenClosed = false
+        window.setFrameAutosaveName("LSPSettingsWindow")
+
+        super.init(window: window)
+
+        let hostingView = NSHostingView(rootView: LSPSettingsView())
+        window.contentView = hostingView
+        window.contentMinSize = NSSize(width: 450, height: 300)
     }
 
-    @MainActor required init?(coder: NSCoder) {
-        super.init(coder: coder, rootView: LSPSettingsView())
-    }
-
-    /// TextMate's PreferencesPaneProtocol requires this for the toolbar icon.
-    @objc public var toolbarItemImage: NSImage {
-        NSImage(systemSymbolName: "server.rack", accessibilityDescription: "Language Servers")
-            ?? NSImage(named: NSImage.networkName)!
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) not supported")
     }
 }

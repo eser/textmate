@@ -4,11 +4,10 @@
 
 namespace render
 {
-	void fill_rect (CGContextRef context, CGColorRef color, CGRect const& rect)
+	void fill_rect (ng::context_t const& context, CGColorRef color, CGRect const& rect)
 	{
 		ASSERT(color);
-		CGContextSetFillColorWithColor(context, color);
-		CGContextFillRect(context, rect);
+		context.fill_rect(color, rect);
 	}
 
 } /* render */

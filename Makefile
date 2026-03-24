@@ -51,6 +51,16 @@ xcode-build: xcode
 		SYMROOT=$(CURDIR)/build/xcode \
 		build
 
+## Build TextFellow Release (no ASan, distributable)
+xcode-release: xcode
+	xcodebuild -project TextFellow.xcodeproj \
+		-target TextFellow \
+		-configuration Release \
+		-arch arm64 \
+		SYMROOT=$(CURDIR)/build/xcode \
+		build
+	@echo "Release: build/xcode/Release/TextFellow.app"
+
 ## Build and run TextFellow (Xcode)
 xcode-run: xcode-build
 	@xattr -cr $(XCODE_APP) 2>/dev/null || true

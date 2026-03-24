@@ -232,6 +232,32 @@ targets:
       HEADER_SEARCH_PATHS: [$(inherited), $(SRCROOT)/vendor/tree-sitter/lib/include, $(SRCROOT)/vendor/tree-sitter-yaml/src]
       WARNING_CFLAGS: "-w"
 
+  # ── Vendor: tree-sitter grammar — Bash ──
+  TreeSitterBash:
+    type: library.static
+    platform: macOS
+    sources:
+      - path: vendor/tree-sitter-bash/src
+        includes: ["parser.c", "scanner.c"]
+    settings:
+      GCC_PRECOMPILE_PREFIX_HEADER: false
+      GCC_PREFIX_HEADER: ""
+      HEADER_SEARCH_PATHS: [$(inherited), $(SRCROOT)/vendor/tree-sitter/lib/include, $(SRCROOT)/vendor/tree-sitter-bash/src]
+      WARNING_CFLAGS: "-w"
+
+  # ── Vendor: tree-sitter grammar — TOML ──
+  TreeSitterTOML:
+    type: library.static
+    platform: macOS
+    sources:
+      - path: vendor/tree-sitter-toml/src
+        includes: ["parser.c", "scanner.c"]
+    settings:
+      GCC_PRECOMPILE_PREFIX_HEADER: false
+      GCC_PREFIX_HEADER: ""
+      HEADER_SEARCH_PATHS: [$(inherited), $(SRCROOT)/vendor/tree-sitter/lib/include, $(SRCROOT)/vendor/tree-sitter-toml/src]
+      WARNING_CFLAGS: "-w"
+
   # ── Vendor: kvdb (ObjC key-value store, git submodule) ──
   kvdb:
     type: library.static
@@ -558,6 +584,8 @@ targets:
       - target: TreeSitterCSS
       - target: TreeSitterMarkdown
       - target: TreeSitterYAML
+      - target: TreeSitterBash
+      - target: TreeSitterTOML
       - sdk: AddressBook.framework
       - sdk: AudioToolbox.framework
       - sdk: Carbon.framework

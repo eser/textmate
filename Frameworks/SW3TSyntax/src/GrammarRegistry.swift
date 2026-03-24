@@ -12,6 +12,9 @@ public final class GrammarRegistry: NSObject, @unchecked Sendable {
     /// Registered grammars: extension → (language name, TSLanguage pointer)
     private var grammars: [String: (name: String, language: OpaquePointer)] = [:]
 
+    /// Number of registered grammars.
+    @objc public var registeredCount: Int { grammars.count }
+
     public override init() {
         super.init()
         registerBuiltinGrammars()
@@ -86,5 +89,13 @@ public final class GrammarRegistry: NSObject, @unchecked Sendable {
         // YAML
         let yamlLang: OpaquePointer = tree_sitter_yaml()
         register(name: "yaml", extensions: ["yaml", "yml"], language: yamlLang)
+
+        // Bash
+        let bashLang: OpaquePointer = tree_sitter_bash()
+        register(name: "bash", extensions: ["sh", "bash", "zsh"], language: bashLang)
+
+        // TOML
+        let tomlLang: OpaquePointer = tree_sitter_toml()
+        register(name: "toml", extensions: ["toml"], language: tomlLang)
     }
 }

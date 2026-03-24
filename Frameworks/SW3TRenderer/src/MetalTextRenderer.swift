@@ -40,15 +40,7 @@ public protocol ViewportProvider: AnyObject {
     var totalLineCount: Int { get }
 }
 
-// MARK: - Vertex
-
-/// Per-glyph vertex sent to the GPU.
-/// Each glyph quad is made of 4 vertices (two triangles via index buffer).
-struct GlyphVertex {
-    var position: SIMD2<Float>   // clip-space position
-    var texCoord: SIMD2<Float>   // atlas UV
-    var color: SIMD4<Float>      // RGBA tint
-}
+// GlyphVertex defined in MetalGlyphRenderer.swift
 
 // MARK: - Metal Text Renderer
 

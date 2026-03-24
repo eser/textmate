@@ -254,6 +254,17 @@ static void* kDocumentEditedObserverContext = &kDocumentEditedObserverContext;
 		_buffer->set_grammar(item);
 		break;
 	}
+
+	// Notify tree-sitter system about the grammar selection
+	if(_path)
+	{
+		NSString* ext = [_path pathExtension];
+		if(ext.length > 0)
+		{
+			[NSNotificationCenter.defaultCenter postNotificationName:@"SW3TBufferGrammarDidChange"
+				object:self userInfo:@{ @"path": _path, @"extension": ext, @"fileType": _fileType ?: @"" }];
+		}
+	}
 }
 
 - (void)snapshot

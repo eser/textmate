@@ -181,7 +181,7 @@ public struct CommandItem: Sendable {
 
     private func setupSearchField() {
         searchField.translatesAutoresizingMaskIntoConstraints = false
-        searchField.placeholderString = "Type to search files, > commands, @ symbols, : line"
+        searchField.placeholderString = "Type to search files, > commands, @ symbols, : line, ! AI edit"
         searchField.font = NSFont.systemFont(ofSize: 13)
         searchField.focusRingType = .none
         searchField.delegate = self
@@ -237,6 +237,7 @@ public struct CommandItem: Sendable {
     // >      = commands (filters registered items)
     // @      = symbols (delegates to Symbol Chooser)
     // :      = go to line number
+    // !      = AI edit (sends selected text + prompt to AI extension)
     // #      = workspace symbols (future)
 
     private enum PaletteMode {
@@ -244,6 +245,7 @@ public struct CommandItem: Sendable {
         case commands
         case symbols
         case goToLine
+        case aiEdit
     }
 
     private var currentMode: PaletteMode = .commands
@@ -255,6 +257,8 @@ public struct CommandItem: Sendable {
             return (.symbols, String(query.dropFirst()).trimmingCharacters(in: .whitespaces))
         } else if query.hasPrefix(":") {
             return (.goToLine, String(query.dropFirst()).trimmingCharacters(in: .whitespaces))
+        } else if query.hasPrefix("!") {
+            return (.aiEdit, String(query.dropFirst()).trimmingCharacters(in: .whitespaces))
         } else {
             return (.files, query)
         }
@@ -311,6 +315,27 @@ public struct CommandItem: Sendable {
             filteredItems = [CommandItem(
                 id: "_hint_line", title: "Go to line \(stripped)", category: "Navigate",
                 shortcut: "⌘L", action: { NSApp.sendAction(Selector("orderFrontGoToLinePanel:"), to: nil, from: nil) }
+            )]
+            tableView.reloadData()
+            tableView.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
+
+        case .aiEdit:
+            let prompt = stripped
+            filteredItems = [CommandItem(
+                id: "_ai_edit", title: prompt.isEmpty ? "Type your edit instruction…" : "AI Edit: \(prompt)",
+                category: "AI",
+                shortcut: nil,
+                action: { [weak self] in
+                    guard !prompt.isEmpty else { return }
+                    // Dispatch AI edit request via AIEditManager
+                    let mgr = NSClassFromString("SW3TAIEditManager")
+                    if let shared = mgr?.value(forKey: "shared") as? NSObject {
+                        shared.perform(
+                            NSSelectorFromString("requestEditWithSelectedText:prompt:filePath:language:completion:"),
+                            with: "" as NSString, with: prompt as NSString
+                        )
+                    }
+                }
             )]
             tableView.reloadData()
             tableView.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)

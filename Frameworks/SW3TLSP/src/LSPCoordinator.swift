@@ -92,6 +92,134 @@ public final class LSPCoordinator: NSObject, @unchecked Sendable {
             arguments: ["serve"],
             extensions: ["go"]
         )
+
+        // Lua
+        registerServer(
+            language: "lua",
+            command: "lua-language-server",
+            arguments: [],
+            extensions: ["lua"]
+        )
+
+        // Bash / Shell
+        registerServer(
+            language: "shellscript",
+            command: "bash-language-server",
+            arguments: ["start"],
+            extensions: ["sh", "bash", "zsh"]
+        )
+
+        // HTML
+        registerServer(
+            language: "html",
+            command: "vscode-html-language-server",
+            arguments: ["--stdio"],
+            extensions: ["html", "htm"]
+        )
+
+        // CSS / SCSS / Less
+        registerServer(
+            language: "css",
+            command: "vscode-css-language-server",
+            arguments: ["--stdio"],
+            extensions: ["css", "scss", "less"]
+        )
+
+        // JSON
+        registerServer(
+            language: "json",
+            command: "vscode-json-language-server",
+            arguments: ["--stdio"],
+            extensions: ["json", "jsonc"]
+        )
+
+        // YAML
+        registerServer(
+            language: "yaml",
+            command: "yaml-language-server",
+            arguments: ["--stdio"],
+            extensions: ["yaml", "yml"]
+        )
+
+        // TOML
+        registerServer(
+            language: "toml",
+            command: "taplo",
+            arguments: ["lsp", "stdio"],
+            extensions: ["toml"]
+        )
+
+        // Markdown
+        registerServer(
+            language: "markdown",
+            command: "marksman",
+            arguments: ["server"],
+            extensions: ["md", "markdown"]
+        )
+
+        // Ruby
+        registerServer(
+            language: "ruby",
+            command: "solargraph",
+            arguments: ["stdio"],
+            extensions: ["rb", "rake", "gemspec"]
+        )
+
+        // PHP
+        registerServer(
+            language: "php",
+            command: "phpactor",
+            arguments: ["language-server"],
+            extensions: ["php"]
+        )
+
+        // Elixir
+        registerServer(
+            language: "elixir",
+            command: "elixir-ls",
+            arguments: [],
+            extensions: ["ex", "exs"]
+        )
+
+        // Zig
+        registerServer(
+            language: "zig",
+            command: "zls",
+            arguments: [],
+            extensions: ["zig"]
+        )
+
+        // Kotlin
+        registerServer(
+            language: "kotlin",
+            command: "kotlin-language-server",
+            arguments: [],
+            extensions: ["kt", "kts"]
+        )
+
+        // Java
+        registerServer(
+            language: "java",
+            command: "jdtls",
+            arguments: [],
+            extensions: ["java"]
+        )
+
+        // C#
+        registerServer(
+            language: "csharp",
+            command: "OmniSharp",
+            arguments: ["-lsp"],
+            extensions: ["cs"]
+        )
+
+        // Terraform
+        registerServer(
+            language: "terraform",
+            command: "terraform-ls",
+            arguments: ["serve"],
+            extensions: ["tf", "tfvars"]
+        )
     }
 
     // MARK: - Document Events
