@@ -729,6 +729,27 @@ static std::string shell_quote (std::vector<std::string> paths)
 }
 @end
 
+// Shared Metal renderer — used by both OakTextView and GutterView
+id GetSharedMetalRenderer ()
+{
+	static id renderer = nil;
+	static dispatch_once_t once;
+	dispatch_once(&once, ^{
+		id<MTLDevice> device = MTLCreateSystemDefaultDevice();
+		if(device)
+		{
+			Class cls = NSClassFromString(@"SW3TMetalFullRenderer");
+			if(cls)
+				renderer = [[cls alloc] performSelector:NSSelectorFromString(@"initWithDevice:") withObject:device];
+		}
+		if(renderer)
+			NSLog(@"Metal pipeline renderer initialized");
+		else
+			NSLog(@"Metal pipeline init failed — falling back to CoreText");
+	});
+	return renderer;
+}
+
 @implementation OakTextView
 // =================================
 // = OakTextView Delegate Wrappers =
@@ -1187,24 +1208,7 @@ doScroll:
 	}
 
 	static BOOL useMetalRenderer = [NSUserDefaults.standardUserDefaults boolForKey:@"metalRenderer"];
-	static id metalFullRenderer = nil;
-	if(useMetalRenderer)
-	{
-		static dispatch_once_t metalOnce;
-		dispatch_once(&metalOnce, ^{
-			id<MTLDevice> device = MTLCreateSystemDefaultDevice();
-			if(device)
-			{
-				Class rendererClass = NSClassFromString(@"SW3TMetalFullRenderer");
-				if(rendererClass)
-					metalFullRenderer = [[rendererClass alloc] performSelector:NSSelectorFromString(@"initWithDevice:") withObject:device];
-			}
-			if(metalFullRenderer)
-				NSLog(@"Metal pipeline renderer initialized");
-			else
-				NSLog(@"Metal pipeline init failed — falling back to CoreText");
-		});
-	}
+	id metalFullRenderer = useMetalRenderer ? GetSharedMetalRenderer() : nil;
 
 	// Standard CGContext setup — used by both CoreText and Metal paths
 	if(self.theme->is_transparent())
@@ -1297,6 +1301,7 @@ doScroll:
 			}];
 		}
 
+		CGContextRef callerCtx = NSGraphicsContext.currentContext.CGContext;
 		NSDictionary* pipelineData = @{
 			@"rects": rectCmds,
 			@"lines": lineCmds,
@@ -1308,6 +1313,7 @@ doScroll:
 			@"visibleY": @(aRect.origin.y),
 			@"drawWidth": @(aRect.size.width),
 			@"drawHeight": @(aRect.size.height),
+			@"cgContext": [NSValue valueWithPointer:callerCtx],
 		};
 
 		SEL renderSel = NSSelectorFromString(@"renderPipelineData:");

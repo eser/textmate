@@ -69,8 +69,8 @@
 		_scrollView.automaticallyAdjustsContentInsets = NO;
 		_scrollView.contentInsets = insets;
 
-		_outlineView.backgroundColor = NSColor.clearColor;
-		_scrollView.drawsBackground  = NO;
+		_outlineView.backgroundColor = NSColor.controlBackgroundColor;
+		_scrollView.drawsBackground  = YES;
 	}
 	return self;
 }

@@ -10,6 +10,10 @@
 #import <crash/info.h>
 #import <oak/debug.h>
 #import <oak/oak.h>
+#import <layout/ct.h>
+#import <Metal/Metal.h>
+
+extern id GetSharedMetalRenderer();
 
 NSString* GVColumnDataSourceDidChange   = @"GVColumnDataSourceDidChange";
 NSString* GVLineNumbersColumnIdentifier = @"lineNumbers";
@@ -72,6 +76,7 @@ struct data_source_t
 
 		[NSNotificationCenter.defaultCenter addObserver:self selector:@selector(cursorDidHide:) name:OakCursorDidHideNotification object:nil];
 		OakObserveUserDefaults(self);
+
 	}
 	return self;
 }
@@ -176,6 +181,11 @@ struct data_source_t
 	return YES;
 }
 
+// Metal gutter rendering uses a CALayer sublayer to bypass the broken
+// CGContext/drawRect pipeline. The sublayer's contents are set directly
+// from the Metal-rendered CGImage.
+static CALayer* _metalGutterLayer = nil;
+
 - (BOOL)visibilityForColumnWithIdentifier:(NSString*)identifier
 {
 	return ![hiddenColumns containsObject:identifier];
@@ -244,6 +254,11 @@ struct data_source_t
 {
 	[self updateSize];
 	[self.enclosingScrollView.contentView scrollToPoint:NSMakePoint(0, NSMinY(_partnerView.enclosingScrollView.contentView.bounds))];
+
+	// Synchronously update Metal gutter sublayer on every scroll
+	static BOOL useMetalRenderer = [NSUserDefaults.standardUserDefaults boolForKey:@"metalRenderer"];
+	if(useMetalRenderer && _metalGutterLayer)
+		[self renderMetalGutter];
 }
 
 - (void)setSize:(NSSize)newSize
@@ -306,8 +321,185 @@ static void DrawText (std::string const& text, CGRect const& rect, CGFloat basel
 	CGContextRestoreGState(context);
 }
 
+
+- (void)renderMetalGutter
+{
+	id metalRenderer = GetSharedMetalRenderer();
+	if(!metalRenderer || !self.delegate)
+		return;
+
+	NSRect metalRect = self.visibleRect;
+	if(NSIsEmptyRect(metalRect))
+		return;
+
+	CGColorSpaceRef cs = CGColorSpaceCreateDeviceRGB();
+	CGContextRef dummyCtx = CGBitmapContextCreate(NULL, 1, 1, 8, 4, cs, kCGImageAlphaPremultipliedFirst);
+	CGColorSpaceRelease(cs);
+
+	ng::context_t ctx(dummyCtx);
+	ctx.set_metal(true);
+
+	[self setupSelectionRects];
+
+		if(CGColorRef bgColor = [self.backgroundColor CGColor])
+			ctx.fill_rect(bgColor, metalRect);
+
+		if(CGColorRef selBg = [self.selectionBackgroundColor CGColor])
+			for(auto const& rect : backgroundRects)
+				ctx.fill_rect(selBg, NSIntersectionRect(rect, metalRect));
+
+		if(CGColorRef selBorder = [self.selectionBorderColor CGColor])
+			for(auto const& rect : borderRects)
+				ctx.fill_rect(selBorder, NSIntersectionRect(rect, metalRect));
+
+		std::pair<NSUInteger, NSUInteger> prevLine(NSNotFound, 0);
+		for(CGFloat y = NSMinY(metalRect); y < NSMaxY(metalRect); )
+		{
+			GVLineRecord record = [self.delegate lineRecordForPosition:y];
+			if(record.lastY <= y || prevLine == std::make_pair(record.lineNumber, record.softlineOffset))
+				break;
+			prevLine = std::make_pair(record.lineNumber, record.softlineOffset);
+
+			BOOL selectedRow = NO;
+			for(auto const& rect : backgroundRects)
+				selectedRow = selectedRow || NSIntersectsRect(rect, NSMakeRect(0, record.firstY, CGRectGetWidth(self.frame), record.lastY - record.firstY));
+
+			for(auto const& dataSource : [self visibleColumnDataSources])
+			{
+				NSRect columnRect = NSMakeRect(dataSource.x0, record.firstY, dataSource.width, record.lastY - record.firstY);
+				if(dataSource.identifier == GVLineNumbersColumnIdentifier.UTF8String)
+				{
+					NSColor* textColor = selectedRow ? self.selectionForegroundColor : self.foregroundColor;
+					std::string numStr = record.softlineOffset == 0 ? std::to_string(record.lineNumber + 1) : "·";
+					CTLineRef line = CreateCTLineFromText(numStr, self.lineNumberFont, textColor);
+					CGFloat x = CGRectGetMaxX(columnRect) - CTLineGetTypographicBounds(line, NULL, NULL, NULL);
+					ctx.draw_line(line, CGPointMake(x, NSMinY(columnRect) + record.baseline), true, 0);
+					CFRelease(line);
+				}
+				else if(record.softlineOffset == 0)
+				{
+					BOOL isHoveringRect = NSMouseInRect(mouseHoveringAtPoint, columnRect, [self isFlipped]);
+					BOOL isDownInRect   = NSMouseInRect(mouseDownAtPoint,     columnRect, [self isFlipped]);
+
+					NSColor* tintColor;
+					if(selectedRow && isDownInRect)        tintColor = self.selectionIconPressedColor;
+					else if(selectedRow && isHoveringRect) tintColor = self.selectionIconHoverColor;
+					else if(selectedRow)                   tintColor = self.selectionIconColor;
+					else if(isDownInRect)                  tintColor = self.iconPressedColor;
+					else if(isHoveringRect)                tintColor = self.iconHoverColor;
+					else                                   tintColor = self.iconColor;
+
+					NSImage* image = [self imageForColumn:dataSource.identifier atLine:record.lineNumber hovering:isHoveringRect && NSEqualPoints(mouseDownAtPoint, NSMakePoint(-1, -1)) pressed:isHoveringRect && isDownInRect];
+					if([image size].height > 0 && [image size].width > 0)
+					{
+						CGFloat center = record.baseline - ([self.lineNumberFont capHeight] / 2);
+						CGFloat ix = round((NSWidth(columnRect) - [image size].width) / 2);
+						CGFloat iy = round(center - ([image size].height / 2));
+						NSRect imageRect = NSMakeRect(NSMinX(columnRect) + ix, NSMinY(columnRect) + iy, [image size].width, [image size].height);
+						CGImageRef cgImage = [image CGImageForProposedRect:&imageRect context:nil hints:nil];
+						if(cgImage)
+						{
+							if(image.isTemplate)
+								ctx.draw_image_masked(cgImage, imageRect, [tintColor CGColor]);
+							else
+								ctx.draw_image(cgImage, imageRect, true);
+						}
+					}
+				}
+			}
+			y = record.lastY;
+		}
+
+		CGContextRelease(dummyCtx);
+
+		// Pack commands and render via Metal
+		CGFloat backingScale = self.window.backingScaleFactor ?: 2.0;
+
+		NSMutableArray* rectCmds = [NSMutableArray arrayWithCapacity:ctx.metal_rects.size()];
+		for(auto const& cmd : ctx.metal_rects)
+		{
+			[rectCmds addObject:@{
+				@"x": @(cmd.rect.origin.x), @"y": @(cmd.rect.origin.y),
+				@"w": @(cmd.rect.size.width), @"h": @(cmd.rect.size.height),
+				@"r": @(cmd.r), @"g": @(cmd.g), @"b": @(cmd.b), @"a": @(cmd.a),
+			}];
+		}
+
+		NSMutableArray* lineCmds = [NSMutableArray arrayWithCapacity:ctx.metal_lines.size()];
+		for(auto const& cmd : ctx.metal_lines)
+		{
+			[lineCmds addObject:@{
+				@"line": (__bridge id)cmd.line,
+				@"x": @(cmd.pos.x),
+				@"y": @(cmd.pos.y),
+				@"flipped": @(cmd.isFlipped),
+				@"height": @(cmd.height),
+			}];
+		}
+
+		NSMutableArray* imageCmds = [NSMutableArray arrayWithCapacity:ctx.metal_images.size()];
+		for(auto const& cmd : ctx.metal_images)
+		{
+			[imageCmds addObject:@{
+				@"image": (__bridge id)cmd.image,
+				@"x": @(cmd.rect.origin.x), @"y": @(cmd.rect.origin.y),
+				@"w": @(cmd.rect.size.width), @"h": @(cmd.rect.size.height),
+				@"r": @(cmd.r), @"g": @(cmd.g), @"b": @(cmd.b), @"a": @(cmd.a),
+				@"isMask": @(cmd.isMask),
+			}];
+		}
+
+		// Create a sublayer on the OakDocumentView (the grandparent view that
+		// IS rendering correctly). Position it at the gutter's frame origin.
+		// This bypasses the entirely broken gutterScrollView rendering pipeline.
+		if(!_metalGutterLayer)
+		{
+			_metalGutterLayer = [CALayer layer];
+			_metalGutterLayer.anchorPoint = CGPointMake(0, 0);
+
+			// Walk up: GutterView → ClipView → gutterScrollView → OakDocumentView
+			NSView* documentView = self.enclosingScrollView.superview;
+			documentView.wantsLayer = YES;
+			[documentView.layer addSublayer:_metalGutterLayer];
+		}
+
+		// Position sublayer at the gutter scroll view's frame within OakDocumentView
+		NSRect scrollFrame = self.enclosingScrollView.frame;
+		_metalGutterLayer.frame = CGRectMake(scrollFrame.origin.x, scrollFrame.origin.y,
+			scrollFrame.size.width, scrollFrame.size.height);
+		_metalGutterLayer.contentsScale = backingScale;
+		_metalGutterLayer.zPosition = 10; // Ensure it's on top
+
+		NSDictionary* pipelineData = @{
+			@"rects": rectCmds,
+			@"lines": lineCmds,
+			@"images": imageCmds,
+			@"viewportW": @(metalRect.size.width * backingScale),
+			@"viewportH": @(metalRect.size.height * backingScale),
+			@"scale": @(backingScale),
+			@"visibleX": @(metalRect.origin.x),
+			@"visibleY": @(metalRect.origin.y),
+			@"drawWidth": @(metalRect.size.width),
+			@"drawHeight": @(metalRect.size.height),
+			@"targetLayer": _metalGutterLayer,
+		};
+
+		SEL renderSel = NSSelectorFromString(@"renderPipelineData:");
+		if([metalRenderer respondsToSelector:renderSel])
+			[metalRenderer performSelector:renderSel withObject:pipelineData];
+
+}
+
 - (void)drawRect:(NSRect)aRect
 {
+	static BOOL useMetalRenderer = [NSUserDefaults.standardUserDefaults boolForKey:@"metalRenderer"];
+	if(useMetalRenderer && GetSharedMetalRenderer())
+	{
+		[self renderMetalGutter];
+		return;
+	}
+
+	// CoreText rendering path (fallback when Metal disabled)
 	[self.backgroundColor set];
 	NSRectFill(NSIntersectionRect(aRect, self.frame));
 
@@ -359,7 +551,6 @@ static void DrawText (std::string const& text, CGRect const& rect, CGFloat basel
 				NSImage* image = [self imageForColumn:dataSource.identifier atLine:record.lineNumber hovering:isHoveringRect && NSEqualPoints(mouseDownAtPoint, NSMakePoint(-1, -1)) pressed:isHoveringRect && isDownInRect];
 				if([image size].height > 0 && [image size].width > 0)
 				{
-					// The placement of the center of image is aligned with the center of the capHeight.
 					CGFloat center = record.baseline - ([self.lineNumberFont capHeight] / 2);
 					CGFloat x = round((NSWidth(columnRect) - [image size].width) / 2);
 					CGFloat y = round(center - ([image size].height / 2));

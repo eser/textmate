@@ -190,7 +190,6 @@ static NSString* const OakTabItemPasteboardType = @"com.macromates.TextMate.tabI
 @property (nonatomic) NSArray<NSLayoutConstraint*>* overflowButtonConstraints;
 
 @property (nonatomic) OakBox* backgroundView;
-@property (nonatomic) OakBox* topBorderView;
 @property (nonatomic) OakBox* leftBorderView;
 @property (nonatomic) OakRolloverButton* closeButton;
 @property (nonatomic) OakRolloverButton* overflowButton;
@@ -253,7 +252,6 @@ static void* kOakTabViewSelectedContext  = &kOakTabViewSelectedContext;
 		_tabBarView = tabBarView;
 
 		_backgroundView = [[OakBox alloc] initWithFrame:NSZeroRect];
-		_topBorderView  = [[OakBox alloc] initWithFrame:NSZeroRect];
 		_leftBorderView = [[OakBox alloc] initWithFrame:NSZeroRect];
 
 		_textField = OakCreateLabel();
@@ -261,14 +259,13 @@ static void* kOakTabViewSelectedContext  = &kOakTabViewSelectedContext;
 		DisableImplicitAnimationForBlock(^{
 			_backgroundView.fillColor  = NSColor.textColor;
 			_backgroundView.alphaValue = _selected ? 0 : (_mouseInside ? 0.2 : 0.1);
-			_topBorderView.fillColor   = [NSColor colorWithCalibratedWhite:NSBlack alpha:0.25];
 			_leftBorderView.fillColor  = [NSColor colorWithCalibratedWhite:NSBlack alpha:0.25];
 
 			_textField.textColor  = NSColor.secondaryLabelColor;
 			_textField.alphaValue = _selected ? 1 : 0.5;
 		});
 
-		NSArray<NSView*>* subviews = @[ _backgroundView, _topBorderView, _leftBorderView, _textField, self.closeButton, self.overflowButton ];
+		NSArray<NSView*>* subviews = @[ _backgroundView, _leftBorderView, _textField, self.closeButton, self.overflowButton ];
 		for(NSView* view in subviews)
 		{
 			view.translatesAutoresizingMaskIntoConstraints = NO;
@@ -282,7 +279,6 @@ static void* kOakTabViewSelectedContext  = &kOakTabViewSelectedContext;
 
 		NSDictionary* views = @{
 			@"background": _backgroundView,
-			@"topBorder":  _topBorderView,
 			@"leftBorder": _leftBorderView,
 
 			@"close":      self.closeButton,
@@ -290,8 +286,8 @@ static void* kOakTabViewSelectedContext  = &kOakTabViewSelectedContext;
 			@"overflow":   self.overflowButton,
 		};
 
-		[self addConstraints:[NSLayoutConstraint constraintsWithVisualFormat:@"H:|[leftBorder(==1@75)][topBorder]|" options:NSLayoutFormatAlignAllTop metrics:nil views:views]];
-		[self addConstraints:[NSLayoutConstraint constraintsWithVisualFormat:@"V:|[topBorder(==1@75)][background]|" options:NSLayoutFormatAlignAllLeft|NSLayoutFormatAlignAllRight metrics:nil views:views]];
+		[self addConstraints:[NSLayoutConstraint constraintsWithVisualFormat:@"H:|[leftBorder(==1@75)][background]|" options:0 metrics:nil views:views]];
+		[self addConstraints:[NSLayoutConstraint constraintsWithVisualFormat:@"V:|[background]|" options:0 metrics:nil views:views]];
 		[self addConstraints:[NSLayoutConstraint constraintsWithVisualFormat:@"V:|[leftBorder]|" options:0 metrics:nil views:views]];
 
 		[self addConstraints:[NSLayoutConstraint constraintsWithVisualFormat:@"H:|-(3@53)-[close]-(>=3@53)-[title]-(>=6@53)-|" options:0 metrics:nil views:views]];
@@ -363,7 +359,6 @@ static void* kOakTabViewSelectedContext  = &kOakTabViewSelectedContext;
 
 	self.textField.alphaValue      = _selected ? 1 : 0.5;
 	self.backgroundView.alphaValue = _selected ? 0 : (_mouseInside ? 0.2 : 0.1);
-	self.topBorderView.alphaValue  = _selected ? 0 : 1;
 }
 
 - (void)setTabItem:(OakTabItem*)tabItem
@@ -394,7 +389,6 @@ static void* kOakTabViewSelectedContext  = &kOakTabViewSelectedContext;
 
 		self.textField.alphaValue      = 0.0;
 		self.backgroundView.alphaValue = 0.1;
-		self.topBorderView.alphaValue  = 1;
 		self.overflowButtonVisible     = NO;
 	}
 }
@@ -425,6 +419,7 @@ static void* kOakTabViewSelectedContext  = &kOakTabViewSelectedContext;
 		_closeButton.action                             = @selector(didClickCloseButton:);
 		_closeButton.target                             = self;
 		_closeButton.disableWindowOrderingForFirstMouse = YES;
+		_closeButton.alphaValue                         = 0;
 
 		[self updateCloseButtonImage];
 	}
@@ -624,14 +619,12 @@ static void* kOakTabViewSelectedContext  = &kOakTabViewSelectedContext;
 	_overflowButton.hidden     = YES;
 	_textField.alphaValue      = 1.0;
 	_backgroundView.alphaValue = 0.1;
-	_topBorderView.alphaValue  = 1;
 
 	[self displayRectIgnoringOpacity:bounds inContext:NSGraphicsContext.currentContext];
 
 	_overflowButton.hidden     = !_overflowButtonVisible;
 	_textField.alphaValue      = _selected ? 1 : 0.5;
 	_backgroundView.alphaValue = _selected ? 0 : (_mouseInside ? 0.2 : 0.1);
-	_topBorderView.alphaValue  = _selected ? 0 : 1;
 
 	[image unlockFocus];
 	return image;

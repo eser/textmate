@@ -429,26 +429,34 @@ final class MetalFullRenderer: NSObject {
         let h = cgImage.height
         guard w > 0, h > 0 else { return nil }
 
-        // Render CGImage into a grayscale bitmap (same format as glyph atlas: r8Unorm)
-        let bytesPerRow = w
-        var bitmap = [UInt8](repeating: 0, count: w * h)
+        // Render CGImage into RGBA bitmap to preserve alpha channel.
+        // Template images (fold indicators, bookmarks) define their shape via alpha.
+        // We extract the alpha channel into an r8Unorm texture for the shader.
+        let rgbaBytesPerRow = w * 4
+        var rgbaBitmap = [UInt8](repeating: 0, count: w * h * 4)
         guard let ctx = CGContext(
-            data: &bitmap, width: w, height: h,
-            bitsPerComponent: 8, bytesPerRow: bytesPerRow,
-            space: CGColorSpaceCreateDeviceGray(),
-            bitmapInfo: CGImageAlphaInfo.none.rawValue
+            data: &rgbaBitmap, width: w, height: h,
+            bitsPerComponent: 8, bytesPerRow: rgbaBytesPerRow,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
         ) else { return nil }
 
         ctx.draw(cgImage, in: CGRect(x: 0, y: 0, width: w, height: h))
+
+        // Extract alpha channel (byte 3 of each RGBA pixel) into r8Unorm data
+        var alphaBitmap = [UInt8](repeating: 0, count: w * h)
+        for i in 0..<(w * h) {
+            alphaBitmap[i] = rgbaBitmap[i * 4 + 3]
+        }
 
         let desc = MTLTextureDescriptor.texture2DDescriptor(
             pixelFormat: .r8Unorm, width: w, height: h, mipmapped: false)
         desc.usage = [.shaderRead]
         guard let tex = device.makeTexture(descriptor: desc) else { return nil }
 
-        bitmap.withUnsafeBufferPointer { ptr in
+        alphaBitmap.withUnsafeBufferPointer { ptr in
             tex.replace(region: MTLRegion(origin: MTLOrigin(), size: MTLSize(width: w, height: h, depth: 1)),
-                       mipmapLevel: 0, withBytes: ptr.baseAddress!, bytesPerRow: bytesPerRow)
+                       mipmapLevel: 0, withBytes: ptr.baseAddress!, bytesPerRow: w)
         }
 
         imageTextureCache[key] = tex
@@ -478,7 +486,7 @@ final class MetalFullRenderer: NSObject {
     ///   - "scale": backing scale factor
     ///   - "visibleX/Y": origin of the visible rect in view coordinates
     ///   - "drawWidth/Height": size of the draw rect in points
-    @objc func renderPipelineData(_ data: NSDictionary) {
+    @objc func renderPipelineData(_ data: NSDictionary) -> NSValue? {
         guard let rectArray = data["rects"] as? [[String: NSNumber]],
               let lineArray = data["lines"] as? [NSDictionary],
               let viewportW = (data["viewportW"] as? NSNumber)?.intValue,
@@ -489,11 +497,11 @@ final class MetalFullRenderer: NSObject {
               let drawW = (data["drawWidth"] as? NSNumber)?.doubleValue,
               let drawH = (data["drawHeight"] as? NSNumber)?.doubleValue,
               let glyphPipeline, let rectPipeline, let atlas
-        else { return }
+        else { return nil }
 
         let texW = max(1, viewportW)
         let texH = max(1, viewportH)
-        guard let texture = getOffscreenTexture(width: texW, height: texH) else { return }
+        guard let texture = getOffscreenTexture(width: texW, height: texH) else { return nil }
 
         // Create render pass — clear with background color from first rect fill
         let renderPass = MTLRenderPassDescriptor()
@@ -509,7 +517,7 @@ final class MetalFullRenderer: NSObject {
         renderPass.colorAttachments[0].storeAction = .store
 
         guard let cmdBuf = commandQueue.makeCommandBuffer(),
-              let encoder = cmdBuf.makeRenderCommandEncoder(descriptor: renderPass) else { return }
+              let encoder = cmdBuf.makeRenderCommandEncoder(descriptor: renderPass) else { return nil }
 
         var vp = SIMD2<Float>(Float(texW), Float(texH))
         let s = Float(scale)
@@ -540,7 +548,7 @@ final class MetalFullRenderer: NSObject {
                     encoder.setVertexBytes(rects, length: rectBytes, index: 0)
                 } else {
                     guard let buf = device.makeBuffer(bytes: rects, length: rectBytes, options: .storageModeShared) else {
-                        encoder.endEncoding(); cmdBuf.commit(); return
+                        encoder.endEncoding(); cmdBuf.commit(); return nil
                     }
                     encoder.setVertexBuffer(buf, offset: 0, index: 0)
                 }
@@ -548,7 +556,7 @@ final class MetalFullRenderer: NSObject {
                     encoder.setVertexBytes(colors, length: colorBytes, index: 1)
                 } else {
                     guard let buf = device.makeBuffer(bytes: colors, length: colorBytes, options: .storageModeShared) else {
-                        encoder.endEncoding(); cmdBuf.commit(); return
+                        encoder.endEncoding(); cmdBuf.commit(); return nil
                     }
                     encoder.setVertexBuffer(buf, offset: 0, index: 1)
                 }
@@ -626,7 +634,7 @@ final class MetalFullRenderer: NSObject {
                 encoder.setVertexBytes(vertices, length: byteLen, index: 0)
             } else {
                 guard let buf = device.makeBuffer(bytes: vertices, length: byteLen, options: .storageModeShared) else {
-                    encoder.endEncoding(); cmdBuf.commit(); return
+                    encoder.endEncoding(); cmdBuf.commit(); return nil
                 }
                 encoder.setVertexBuffer(buf, offset: 0, index: 0)
             }
@@ -712,12 +720,7 @@ final class MetalFullRenderer: NSObject {
         cmdBuf.commit()
         cmdBuf.waitUntilCompleted()
 
-        // 3. Read texture back and draw into current CGContext.
-        // Use Data (reference-counted) so the pixel buffer stays alive until
-        // CoreGraphics finishes reading — CG uses display lists and may read
-        // asynchronously after cgContext.draw() returns.
-        guard let cgContext = NSGraphicsContext.current?.cgContext else { return }
-
+        // 3. Read texture back as CGImage
         let bytesPerRow = texW * 4
         let totalBytes = bytesPerRow * texH
         var pixelData = Data(count: totalBytes)
@@ -735,16 +738,34 @@ final class MetalFullRenderer: NSObject {
                                  bitmapInfo: CGBitmapInfo(rawValue: CGBitmapInfo.byteOrder32Little.rawValue | CGImageAlphaInfo.noneSkipFirst.rawValue),
                                  provider: provider, decode: nil,
                                  shouldInterpolate: false, intent: .defaultIntent)
-        else { return }
+        else { return nil }
 
-        // CGContextDrawImage always places image row 0 at the BOTTOM of destRect,
-        // ignoring the context's flipped state. In OakTextView's flipped context
-        // (y=0 at top), this causes the image to render upside-down.
-        // Fix: apply a local y-flip transform so the image draws correctly.
+        // If targetLayer provided, set layer.contents directly
+        // (bypasses broken CGContext pipeline for views like GutterView)
+        if let layer = data["targetLayer"] as? CALayer {
+            layer.contents = image
+            layer.contentsScale = CGFloat(scale)
+            layer.contentsGravity = .topLeft
+            return nil
+        }
+
+        // Otherwise blit into the caller's CGContext
+        let cgContext: CGContext
+        if let ctxValue = data["cgContext"] as? NSValue, let ptr = ctxValue.pointerValue {
+            cgContext = Unmanaged<CGContext>.fromOpaque(ptr).takeUnretainedValue()
+        } else if let current = NSGraphicsContext.current?.cgContext {
+            cgContext = current
+        } else {
+            return nil
+        }
+
+        // CGContextDrawImage places row 0 at bottom of destRect.
+        // In flipped views, apply y-flip so the image draws correctly.
         cgContext.saveGState()
         cgContext.translateBy(x: 0, y: CGFloat(visY) + CGFloat(drawH))
         cgContext.scaleBy(x: 1, y: -1)
         cgContext.draw(image, in: CGRect(x: visX, y: 0, width: drawW, height: drawH))
         cgContext.restoreGState()
+        return nil
     }
 }
